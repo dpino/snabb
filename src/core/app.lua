@@ -269,7 +269,10 @@ function pace_breathing ()
    end
 end
 
+local receivers = {}
+
 function breathe ()
+   local receiver
    monotonic_now = C.get_monotonic_time()
    -- Restart: restart dead apps
    restart_dead_apps()
@@ -293,8 +296,11 @@ function breathe ()
          local link = link_array[i]
          if firstloop or link.has_new_data then
             link.has_new_data = false
-            local receiver = app_array[link.receiving_app]
+            receiver = app_array[link.receiving_app]
             if receiver.push and not receiver.dead then
+               if not receivers[receiver] then
+                  receivers[receiver] = receiver
+               end
                zone(receiver.zone)
                with_restart(receiver, receiver.push)
                zone()
@@ -318,6 +324,12 @@ function report (options)
    end
    if options and options.showapps then
       report_apps()
+   end
+   -- Report for each called app
+   for _, receiver in pairs(receivers) do
+      if receiver.report then
+         receiver:report()
+      end
    end
 end
 
