@@ -9,7 +9,7 @@ local output_file = "/tmp/output.pcap"
 
 local c = config.new()
 config.app(c, "capture", pcap.PcapReader, "apps/conntrack/input.pcap")
-config.app(c, "conntrack_app", conntrack.Conntrack)
+config.app(c, "conntrack_app", conntrack.ConntrackApp)
 config.app(c, "output_file", pcap.PcapWriter, output_file)
 
 config.link(c, "capture.output -> conntrack_app.input")

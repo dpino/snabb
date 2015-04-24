@@ -7,166 +7,31 @@ local link = require("core.link")
 local packet = require("core.packet")
 local bit = require("bit")
 
--- Utils
+local Conntrack = require("lib.conntrack.conntrack")
 
-local function uint32(a, b, c, d)
-   return a * 2^24 + b * 2^16 + c * 2^8 + d
+ConntrackApp = {}
+
+function ConntrackApp:new(arg)
+   self.conntrack = Conntrack.new()
+   return setmetatable({}, { __index = ConntrackApp })
 end
 
-local function uint16(a, b)
-   return a * 2^8 + b
+function ConntrackApp:report()
+   local conntrack = self.conntrack
+   print("ConntrackApp:report")
+   print("Total connections: "..self.conntrack:n_connections())
+   print("Total packets: "..self.conntrack:n_packets())
 end
 
--- IP
-
-local function ip_str(a, b, c, d)
-   return ("%d.%d.%d.%d"):format(a, b, c, d)
-end
-
-local function src_ip_str(p)
-   return ip_str(p[26], p[27], p[28], p[29])
-end
-
-local function dst_ip_str(p)
-   return ip_str(p[30], p[31], p[32], p[33])
-end
-
--- TCP
-
-local function src_port(p)
-   return uint16(p[34], p[35])
-end
-
-local function dst_port(p)
-   return uint16(p[36], p[37])
-end
-
-local function seq(p)
-   return uint32(p[38], p[39], p[40], p[41])
-end
-
-local function ack(p)
-   return uint32(p[42], p[43], p[44], p[45])
-end
-
--- TCP_FLAGS
-
-local TCP_SYN     = 0x02
-local TCP_ACK     = 0x10
-local TCP_SYN_ACK = 0x12
-
-local function tcpflags(p, flag)
-   return bit.band(p[47], 0x3F) == flag
-end
-
--- TCP connection negotiation
-
-local function is_syn(p)
-   return tcpflags(p, TCP_SYN)
-end
-
-local function is_ack(p)
-   return tcpflags(p, TCP_ACK)
-end
-
-local function is_syn_ack(p)
-   return tcpflags(p, TCP_SYN_ACK)
-end
-
---
-
-Conntrack = {}
-
-function Conntrack:new(arg)
-   self.packet_counter = 1
-   self.conns = {}   
-   self.conn_packs = {}
-   self.three_way_handshake = {}
-   self.n_connections = 0
-   self.n_packets = 0
-   return setmetatable({}, { __index = Conntrack })
-end
-
-function Conntrack:report()
-   print("Conntrack:report")
-   print("Total connections: "..self.n_connections)
-   print("Total packets: "..self.n_packets)
-end
-
-function Conntrack:push()
+function ConntrackApp:push()
    local i = assert(self.input.input, "input port not found")
    local o = assert(self.output.output, "output port not found")
 
    while not link.empty(i) and not link.full(o) do
-      self:process_packet(i, o)
-      self.packet_counter = self.packet_counter + 1
-   end
-end
-
-local connection_id = (function()
-   local count = 0
-   return function()
-      count = count + 1
-      return "conn_"..count
-   end
-end)()
-
--- A packet id is defined by the tuple { src_ip; src_port; dst_ip; dst_port }
-local function packet_id(p, opts)
-   opts = opts or {}
-   local src = src_ip_str(p)..":"..src_port(p)
-   local dst = dst_ip_str(p)..":"..dst_port(p)
-   if opts.dst_src then
-      return dst.."-"..src
-   end
-   return src.."-"..dst
-end
-
-function Conntrack:has_connection(packet)
-   local function is_registered(p)
-      local p_id = packet_id(p)
-      if self.conns[p_id] then return true end
-      p_id = packet_id(p, { dst_src = true })
-      return self.conns[p_id]
-   end
-
-   self.n_packets = self.n_packets + 1
-
-   local p = packet.data      -- Get payload
-   local p_id = packet_id(p)  -- Get packet id 
-
-   if self.three_way_handshake[p_id] then
-      if is_syn_ack(p) then
-         if (self.three_way_handshake[p_id] == ack(p)) then
-            self.three_way_handshake[p_id] = seq(p) + 1
-            return false
-         end
+      local packet = link.receive(i)
+      if self.conntrack:has_connection(packet) then
+         -- Do something
       end
-      if is_ack(p) then
-         if (self.three_way_handshake[p_id] == seq(p)) then
-            -- The connection was established, create a new connection indexed by id
-            local c_id = connection_id()
-            self.conns[p_id] = c_id
-            self.conn_packs[c_id] = 0
-
-            self.n_connections = self.n_connections + 1
-             
-            self.three_way_handshake[p_id] = nil
-            return false
-         end
-      end
-   elseif is_syn(p) then
-      self.three_way_handshake[p_id] = seq(p) + 1
-   else 
-      return is_registered(p)
+      link.transmit(o, packet)
    end
-   return false
-end
-
-function Conntrack:process_packet(i, o)
-   local packet = link.receive(i)
-   if self:has_connection(packet) then
-      -- Do something
-   end
-   link.transmit(o, packet)
 end
