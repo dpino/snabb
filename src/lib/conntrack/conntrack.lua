@@ -1,11 +1,6 @@
 module(..., package.seeall)
 
-local app = require("core.app")
-local config = require("core.config")
-local pcap = require("apps.pcap.pcap")
-local link = require("core.link")
-local packet = require("core.packet")
-local bit = require("bit")
+local bit    = require("bit")
 
 -- Utils
 
@@ -31,7 +26,20 @@ local function dst_ip_str(p)
    return ip_str(p[30], p[31], p[32], p[33])
 end
 
+local function length(p)
+   return uint16(p[16], p[17])
+end
+
+local function protocol(p)
+   return p[23]
+end
+
 -- TCP
+
+local PROTO = {
+   TCP = 0x06,
+   UDP = 0x11
+}
 
 local function src_port(p)
    return uint16(p[34], p[35])
@@ -51,39 +59,86 @@ end
 
 -- TCP_FLAGS
 
+local TCP_FIN     = 0x01
 local TCP_SYN     = 0x02
+local TCP_RST     = 0x04
+local TCP_PSH     = 0x08
 local TCP_ACK     = 0x10
-local TCP_SYN_ACK = 0x12
+local TCP_URG     = 0x20
+local TCP_ECE     = 0x40
+local TCP_CWR     = 0x80
+local TCP_NS      = 0xFF
+
+local function flag(p)
+   return bit.band(p[47], 0xFF)
+end
 
 local function tcpflags(p, flag)
-   return bit.band(p[47], 0x3F) == flag
+   return bit.band(bit.band(p[47], 0x3F), flag) == flag
 end
 
 -- TCP connection negotiation
 
+local function is_fin(p)
+   return tcpflags(p, TCP_FIN)
+end
+
 local function is_syn(p)
    return tcpflags(p, TCP_SYN)
+end
+
+local function is_rst(p)
+   return tcpflags(p, TCP_RST)
+end
+
+local function is_psh(p)
+   return tcpflags(p, TCP_PSH)
 end
 
 local function is_ack(p)
    return tcpflags(p, TCP_ACK)
 end
 
-local function is_syn_ack(p)
-   return tcpflags(p, TCP_SYN_ACK)
+local function is_urg(p)
+   return tcpflags(p, TCP_URG)
+end
+
+local function is_ece(p)
+   return tcpflags(p, TCP_ECE)
+end
+
+local function is_cwr(p)
+   return tcpflags(p, TCP_CWR)
 end
 
 --
+
+local DEBUG = true
+
+local function debug(str)
+   if DEBUG then print("### "..str) end
+end
 
 Conntrack = {}
 
 function Conntrack:new(arg)
    local o = {}
-   o.conns = {}   
-   o.conn_packs = {}
+   o.conns = {}
    o.three_way_handshake = {}
-   o._n_connections = 0
-   o._n_packets = 0
+   o.stats = {
+      conns = {
+         udp = 0,
+         tcp = {
+            opened = 0,
+            closed = 0,
+         },
+      },
+      packets = {
+         any = 0,
+         udp = 0,
+         tcp = 0
+      }
+   }
    return setmetatable(o, { __index = Conntrack })
 end
 
@@ -107,52 +162,128 @@ local function packet_id(p, opts)
 end
 
 function Conntrack:has_connection(packet)
-   local function is_registered(p)
-      local p_id = packet_id(p)
-      if self.conns[p_id] then return true end
-      p_id = packet_id(p, { dst_src = true })
-      return self.conns[p_id]
-   end
-
-   self._n_packets = self._n_packets + 1
+   self.stats.packets.any = self.stats.packets.any + 1
 
    local p = packet.data      -- Get payload
-   local p_id = packet_id(p)  -- Get packet id 
+   if protocol(p) == PROTO.TCP then
+      return self:has_connection_tcp(p)
+   else
+      return self:has_connection_udp(p)
+   end
+end
 
-   if self.three_way_handshake[p_id] then
-      if is_syn_ack(p) then
-         if (self.three_way_handshake[p_id] == ack(p)) then
-            self.three_way_handshake[p_id] = seq(p) + 1
-            return false
-         end
-      end
-      if is_ack(p) then
-         if (self.three_way_handshake[p_id] == seq(p)) then
-            -- The connection was established, create a new connection indexed by id
-            local c_id = connection_id()
-            self.conns[p_id] = c_id
-            self.conn_packs[c_id] = 0
+function Conntrack:has_connection_udp(p, p_id)
+   self.stats.packets.udp = self.stats.packets.udp + 1
+   local exists, p_id = self:connection_exists(p)
+   if not exists then
+      self.conns[p_id] = connection_id()
+      self.stats.conns.udp = self.stats.conns.udp + 1
+   end
+   return true
+end
 
-            self._n_connections = self._n_connections + 1
-             
-            self.three_way_handshake[p_id] = nil
-            return false
-         end
+function Conntrack:connection_exists(p)
+   local p_id = packet_id(p)
+   if self.conns[p_id] then return true end
+   p_id = packet_id(p, { dst_src = true })
+   return self.conns[p_id], p_id
+end
+
+function Conntrack:remove_connection(p)
+   local function remove(p_id)
+      if self.conns[p_id] then
+         self.conns[p_id] = nil
+         return p_id
       end
+   end
+   local p_id = remove(packet_id(p))
+   if not p_id then
+      return remove(packet_id(p, { dst_src = true }))
+   end
+   return p_id
+end
+
+function Conntrack:has_connection_tcp(p)
+   self.stats.packets.tcp = self.stats.packets.tcp + 1
+   local p_id = packet_id(p)
+   -- Receive ACK and SYN-RECEIVED
+   if is_ack(p) and self.three_way_handshake[p_id] then
+      self.three_way_handshake[p_id] = nil
+      if self:create_connection_tcp(p) then
+         self.stats.conns.tcp.opened = self.stats.conns.tcp.opened + 1
+      end
+      return true
+   -- From CLOSED to SYN-SENT
    elseif is_syn(p) then
+      print("syn: "..p_id)
+   elseif is_syn(p) and not is_ack(p) then
       self.three_way_handshake[p_id] = seq(p) + 1
-   else 
-      return is_registered(p)
+   -- From SYN-SENT to SYN-RECEIVED
+   elseif is_syn(p) and is_ack(p) then
+      p_id = packet_id(p, { dst_src = true })
+      if self.three_way_handshake[p_id] == ack(p) then
+         self.three_way_handshake[p_id] = seq(p) + 1
+      elseif not self.three_way_handshake[p_id] then
+         p_id = packet_id(p)
+         if self.three_way_handshake[p_id] == ack(p) then
+            self.three_way_handshake[p_id] = seq(p) + 1
+         else
+            local expected = self.three_way_handshake[p_id] or ""
+            local real = ack(p) or ""
+            -- print("p_id: "..p_id.."; real: "..real.."; expected: "..expected)
+         end
+      else
+         local expected = self.three_way_handshake[p_id] or ""
+         local real = ack(p) or ""
+         -- print("else")
+         -- print("p_id: "..p_id.."; real: "..real.."; expected: "..expected)
+      end
+   -- FIN-WAIT-1 or CLOSE-WAIT
+   elseif is_fin(p) and is_ack(p) then
+      if self:remove_connection(p) then
+         self.stats.conns.tcp.closed = self.stats.conns.tcp.closed + 1
+      end
+   elseif is_rst(p) then
+      if self:remove_connection(p) then
+         self.stats.conns.tcp.closed = self.stats.conns.tcp.closed + 1
+      end
+   else
+      return self:connection_exists(p)
    end
    return false
 end
 
-function Conntrack:n_connections()
-   return self._n_connections
+function Conntrack:create_connection_tcp(p)
+   local exists, p_id = self:connection_exists(p)
+   if not exists then
+      self.conns[p_id] = connection_id()
+      self.three_way_handshake[p_id] = nil
+      return true
+   end
 end
 
 function Conntrack:n_packets()
-   return self._n_packets
+   return self.stats.packets.any
+end
+
+function Conntrack:n_packets_tcp()
+   return self.stats.packets.tcp
+end
+
+function Conntrack:n_packets_udp()
+   return self.stats.packets.udp
+end
+
+function Conntrack:n_conns_tcp_opened()
+   return self.stats.conns.tcp.opened
+end
+
+function Conntrack:n_conns_tcp_closed()
+   return self.stats.conns.tcp.closed
+end
+
+function Conntrack:n_conns_udp()
+   return self.stats.conns.udp
 end
 
 return Conntrack

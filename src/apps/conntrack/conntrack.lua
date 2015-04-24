@@ -18,9 +18,16 @@ end
 
 function ConntrackApp:report()
    local conntrack = self.conntrack
+
    print("ConntrackApp:report")
-   print("Total connections: "..self.conntrack:n_connections())
-   print("Total packets: "..self.conntrack:n_packets())
+
+   print("Total connections (UDP): "..conntrack:n_conns_udp())
+   print("Total connections (TCP) (opened): "..conntrack:n_conns_tcp_opened())
+   print("Total connections (TCP) (closed): "..conntrack:n_conns_tcp_closed())
+
+   print("Total packets: "..conntrack:n_packets())
+   print("Total packets (UDP): "..conntrack:n_packets_udp())
+   print("Total packets (TCP): "..conntrack:n_packets_tcp())
 end
 
 function ConntrackApp:push()

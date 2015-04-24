@@ -79,10 +79,14 @@ function run (parameters)
    end
 end
 
+function dofile(name, arg)
+  return assert(loadfile(name))(arg)
+end
+
 function run_script (parameters)
    local command = table.remove(parameters, 1)
    main.parameters = parameters -- make remaining args available to script
-   local r, error = pcall(dofile, command)
+   local r, error = pcall(dofile, command, parameters)
    if not r then
       print(error)
       main.exit(1)
