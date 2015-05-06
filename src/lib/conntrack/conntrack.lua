@@ -137,7 +137,8 @@ function Conntrack:new(arg)
          any = 0,
          udp = 0,
          tcp = 0
-      }
+      },
+      timestart = os.time(),
    }
    return setmetatable(o, { __index = Conntrack })
 end
@@ -284,6 +285,10 @@ end
 
 function Conntrack:n_conns_udp()
    return self.stats.conns.udp
+end
+
+function Conntrack:timestart()
+   return self.stats.timestart
 end
 
 return Conntrack

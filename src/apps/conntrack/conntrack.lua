@@ -19,6 +19,8 @@ end
 function ConntrackApp:report()
    local conntrack = self.conntrack
 
+   timeend = os.time()
+
    print("ConntrackApp:report")
 
    print("Total connections (UDP): "..conntrack:n_conns_udp())
@@ -28,6 +30,8 @@ function ConntrackApp:report()
    print("Total packets: "..conntrack:n_packets())
    print("Total packets (UDP): "..conntrack:n_packets_udp())
    print("Total packets (TCP): "..conntrack:n_packets_tcp())
+
+   print(("Total time: %d seconds"):format(tonumber(timeend - conntrack:timestart())))
 end
 
 function ConntrackApp:push()
