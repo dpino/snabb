@@ -1,15 +1,14 @@
 module(..., package.seeall)
 
-bit = require("bit")
-ffi = require("ffi")
+local bit = require("bit")
 
 --- ### `basicnat` app: Implement http://www.ietf.org/rfc/rfc1631.txt Basic NAT
 
 BasicNAT = {}
 
-function BasicNAT:new ()
-   return setmetatable({index = 1, packets = {}},
-                       {__index=BasicNAT})
+function BasicNAT:new (conf)
+   local c = {external_ip = conf.external_ip, internal_net = conf.internal_net}
+   return setmetatable(c, {__index=BasicNAT})
 end
 
 local function bytes_to_uint32(a, b, c, d)
@@ -22,22 +21,21 @@ local proto_tcp = 6
 local proto_udp = 17
 
 local function uint32_to_bytes(u)
-   a = bit.rshift(bit.band(u, 0xff000000) % 2^32, 24)
-   b = bit.rshift(bit.band(u, 0x00ff0000), 16)
-   c = bit.rshift(bit.band(u, 0x0000ff00), 8)
-   d = bit.band(u, 0x000000ff)
+   local a = bit.rshift(u, 24)
+   local b = bit.band(bit.rshift(u, 16), 0xff)
+   local c = bit.band(bit.rshift(u, 8), 0xff)
+   local d = bit.band(u, 0xff)
    return a, b, c, d
-end 
+end
 
 local function str_ip_to_uint32(ip)
    local a, b, c, d = ip:match("([0-9]+).([0-9]+).([0-9]+).([0-9]+)")
    return bytes_to_uint32(tonumber(a), tonumber(b), tonumber(c), tonumber(d))
 end
 
--- TODO: is there something nicer in Hacker's Delight?
 local function get_mask_bits(maskbits)
    if maskbits == 0 then return 0 end
-   return bit.lshift(0xffffffff, 32 - maskbits) % 2^32
+   return 2^32 - 2^(32 - maskbits)
 end
 
 local function str_net_to_uint32(ip)
@@ -97,16 +95,15 @@ local function transport_checksum(pkt)
    return csum_carry_and_not(checksum)
 end
 
-
 local function fix_checksums(pkt)
    local ipchecksum = ipv4_checksum(pkt)
    pkt.data[ipv4_base + 10] = bit.rshift(ipchecksum, 8)
    pkt.data[ipv4_base + 11] = bit.band(ipchecksum, 0xff)
    local transport_proto = pkt.data[ipv4_base + 9]
    if transport_proto == proto_tcp then
-      local transport_checksum = transport_checksum(pkt)
-      pkt.data[transport_base + 16] = bit.rshift(transport_checksum, 8)
-      pkt.data[transport_base + 17] = bit.band(transport_checksum, 0xff)
+      local transport_csum = transport_checksum(pkt)
+      pkt.data[transport_base + 16] = bit.rshift(transport_csum, 8)
+      pkt.data[transport_base + 17] = bit.band(transport_csum, 0xff)
       return true
    elseif transport_proto == proto_udp then
       -- ipv4 udp checksums are optional
@@ -120,7 +117,7 @@ end
 
 -- TODO: fix the checksum
 local function set_src_ip(pkt, ip)
-   a, b, c, d = uint32_to_bytes(ip)
+   local a, b, c, d = uint32_to_bytes(ip)
    pkt.data[ipv4_base + 12] = a
    pkt.data[ipv4_base + 13] = b
    pkt.data[ipv4_base + 14] = c
@@ -130,7 +127,7 @@ end
 
 -- TODO: fix the checksum
 local function set_dst_ip(pkt, ip)
-   a, b, c, d = uint32_to_bytes(ip)
+   local a, b, c, d = uint32_to_bytes(ip)
    pkt.data[ipv4_base + 16] = a
    pkt.data[ipv4_base + 17] = b
    pkt.data[ipv4_base + 18] = c
@@ -147,7 +144,6 @@ end
 -- TCP, UDP and ICMP header checksums are translated. For inbound
 -- packets, the destination IP address and the checksums as listed above
 -- are translated.
--- TODO: make this able to deal with a range of external IPs, not just one
 local function basic_rewrite(pkt, external_ip, internal_net, mask)
    -- Only attempt to alter ipv4 packets. Assume an Ethernet encapsulation.
    if pkt.data[12] ~= 8 or pkt.data[13] ~= 0 then return pkt end
@@ -165,8 +161,8 @@ end
 function BasicNAT:push ()
    local i, o = self.input.input, self.output.output
    local pkt = link.receive(i)
-   local external_ip = str_ip_to_uint32("10.0.0.1")
-   local internal_net, mask = str_net_to_uint32("178.0.0.0/8")
+   local external_ip = str_ip_to_uint32(self.external_ip)
+   local internal_net, mask = str_net_to_uint32(self.internal_net)
    local natted_pkt = basic_rewrite(pkt, external_ip, internal_net, mask)
    link.transmit(o, natted_pkt)
 end
