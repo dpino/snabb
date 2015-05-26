@@ -3,11 +3,12 @@ module(..., package.seeall)
 local bit = require("bit")
 
 --- ### `basicnat` app: Implement http://www.ietf.org/rfc/rfc1631.txt Basic NAT
+--- This translates one IP address to another IP address
 
 BasicNAT = {}
 
 function BasicNAT:new (conf)
-   local c = {external_ip = conf.external_ip, internal_net = conf.internal_net}
+   local c = {external_ip = conf.external_ip, internal_ip = conf.internal_ip}
    return setmetatable(c, {__index=BasicNAT})
 end
 
@@ -26,22 +27,6 @@ local function uint32_to_bytes(u)
    local c = bit.band(bit.rshift(u, 8), 0xff)
    local d = bit.band(u, 0xff)
    return a, b, c, d
-end
-
-local function str_ip_to_uint32(ip)
-   local a, b, c, d = ip:match("([0-9]+).([0-9]+).([0-9]+).([0-9]+)")
-   return bytes_to_uint32(tonumber(a), tonumber(b), tonumber(c), tonumber(d))
-end
-
-local function get_mask_bits(maskbits)
-   if maskbits == 0 then return 0 end
-   return 2^32 - 2^(32 - maskbits)
-end
-
-local function str_net_to_uint32(ip)
-   local base_ip = str_ip_to_uint32(ip:match("^[^/]+"))
-   local mask = get_mask_bits(tonumber(ip:match("/([0-9]+)")))
-   return bit.band(base_ip, mask) % 2^32, mask
 end
 
 local function get_src_ip(pkt)
@@ -135,23 +120,19 @@ local function set_dst_ip(pkt, ip)
    return pkt
 end
 
-local function ip_in_net(ip, net, mask)
-  return net == bit.band(ip, mask) % 2^32
-end
-
 -- For packets outbound from the
--- private network, the source IP address and related fields such as IP,
+-- private IP, the source IP address and related fields such as IP,
 -- TCP, UDP and ICMP header checksums are translated. For inbound
 -- packets, the destination IP address and the checksums as listed above
 -- are translated.
-local function basic_rewrite(pkt, external_ip, internal_net, mask)
+local function basic_rewrite(pkt, external_ip, internal_ip, mask)
    -- Only attempt to alter ipv4 packets. Assume an Ethernet encapsulation.
    if pkt.data[12] ~= 8 or pkt.data[13] ~= 0 then return pkt end
    local src_ip, dst_ip = get_src_ip(pkt), get_dst_ip(pkt)
-   if ip_in_net(src_ip, internal_net, mask) then
-      set_src_ip(pkt, external_ip)
+   if src_ip == external_ip then
+      set_src_ip(pkt, internal_ip)
    end
-   if ip_in_net(dst_ip, internal_net, mask) then
+   if dst_ip == internal_ip then
       set_dst_ip(pkt, external_ip)
    end
    fix_checksums(pkt)
@@ -161,8 +142,6 @@ end
 function BasicNAT:push ()
    local i, o = self.input.input, self.output.output
    local pkt = link.receive(i)
-   local external_ip = str_ip_to_uint32(self.external_ip)
-   local internal_net, mask = str_net_to_uint32(self.internal_net)
-   local natted_pkt = basic_rewrite(pkt, external_ip, internal_net, mask)
+   local natted_pkt = basic_rewrite(pkt, self.external_ip, self.internal_ip)
    link.transmit(o, natted_pkt)
 end
