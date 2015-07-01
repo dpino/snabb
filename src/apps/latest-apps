@@ -1,0 +1,29 @@
+#!/usr/bin/env luajit
+
+
+local function split(str, sep)
+    local result = {}
+    local pattern = string.format("([^%s]+)", sep)
+    for line,_ in str:gmatch(pattern) do
+       table.insert(result, line)
+    end
+    return result
+end
+
+local function exec(command)
+   local handle = io.popen(command)
+   local result = handle:read("*a")
+   handle:close()
+   return result
+end
+
+local function pp(fname)
+   local command = "git log -1 --date=short --pretty=format:'%ad:%s' "..fname
+   local result = split(exec(command), ":")
+   local date, msg = result[1], result[2]
+   print(("%s | %s | %s"):format(date, fname, msg))
+end
+
+for _,fname in ipairs(split(exec("find . -name '*.lua'"), "\n")) do
+   pp(fname)
+end

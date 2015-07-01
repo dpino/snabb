@@ -1,0 +1,6 @@
+#!/bin/bash
+
+for i in {1..10}; do
+    git show --stat HEAD~$i
+    # git log HEAD~$i..HEAD~$j
+done
