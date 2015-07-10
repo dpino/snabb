@@ -141,7 +141,10 @@ end
 
 function BasicNAT:push ()
    local i, o = self.input.input, self.output.output
-   local pkt = link.receive(i)
-   local natted_pkt = basic_rewrite(pkt, self.external_ip, self.internal_ip)
-   link.transmit(o, natted_pkt)
+
+   while not link.empty(i) and not link.full(o) do
+      local pkt = link.receive(i)
+      local natted_pkt = basic_rewrite(pkt, self.external_ip, self.internal_ip)
+      link.transmit(o, natted_pkt)
+   end
 end
