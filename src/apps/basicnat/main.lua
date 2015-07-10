@@ -23,7 +23,6 @@ function run (parameters)
 
    local c = config.new()
    config.app(c, "capture", pcap.PcapReader, in_pcap)
-   print(external_ip)
    config.app(c, "basicnat_app", basicnat.BasicNAT,
                   {external_ip = external_ip, internal_ip = internal_ip})
    config.app(c, "output_file", pcap.PcapWriter, out_pcap)
@@ -32,8 +31,7 @@ function run (parameters)
    config.link(c, "basicnat_app.output -> output_file.input")
 
    app.configure(c)
-   --app.main({duration=1, report = {showlinks=true}})
-   app.main({duration=1})
+   app.main({duration=1, report = {showlinks=true}})
 end
 
 run(main.parameters)
