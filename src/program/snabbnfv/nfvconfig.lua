@@ -5,6 +5,7 @@ local PcapFilter = require("apps.packet_filter.pcap_filter").PcapFilter
 local RateLimiter = require("apps.rate_limiter.rate_limiter").RateLimiter
 local nd_light = require("apps.ipv6.nd_light").nd_light
 local L2TPv3 = require("apps.keyed_ipv6_tunnel.tunnel").SimpleKeyedTunnel
+local ICMP = require("apps.icmp.icmp").icmp
 local pci = require("lib.hardware.pci")
 local ffi = require("ffi")
 local C = ffi.C
@@ -91,6 +92,12 @@ function load (file, pciaddr, sockpath)
          config.app(c, RxLimit, RateLimiter, {rate = rate, bucket_capacity = rate})
          config.link(c, RxLimit..".output -> "..VM_rx)
          VM_rx = RxLimit..".input"
+      end
+      if t.icmp then
+         local icmp = name.."_icmp"
+         config.app(c, icmp, ICMP)
+         config.link(c, VM_tx..' -> '..icmp..'.input')
+         VM_tx = icmp..'.output'
       end
       config.link(c, NIC..".tx -> "..VM_rx)
       config.link(c, VM_tx.." -> "..NIC..".rx")
