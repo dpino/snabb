@@ -80,24 +80,24 @@ local function tcplen(p)
    return word16(p, ETHER_HDR_SIZE + 2) - 20
 end
 
-local function transport_checksum(pkt)
+local function transport_checksum(p)
    local csum = 0
    -- First 64 bytes of the TCP pseudo-header: the ip addresses.
    for i = ETHER_HDR_SIZE + 12, ETHER_HDR_SIZE + 18, 2 do
-      csum = csum + word16(pkt, i)
+      csum = csum + word16(p, i)
    end
    -- Add the protocol field of the IPv4 header to the csum.
-   csum = csum + ip_proto(pkt)
+   csum = csum + ip_proto(p)
    local tcplen = tcplen(p)
    csum = csum + tcplen -- End of pseudo-header.
 
    for i = TRANSPORT_BASE, TRANSPORT_BASE + tcplen - 2, 2 do
       if i ~= TRANSPORT_BASE + 16 then -- The csum bytes are zero.
-         csum = csum + word16(pkt, i)
+         csum = csum + word16(p, i)
       end
    end
    if tcplen % 2 == 1 then
-      csum = csum + byte(pkt, TRANSPORT_BASE + tcplen - 1)
+      csum = csum + byte(p, TRANSPORT_BASE + tcplen - 1)
    end
    return checksum_carry_and_not(csum)
 end
@@ -267,23 +267,57 @@ local function testIPv4GetSet()
    print("---")
 end
 
-local function testChecksum()
-   print("Test checksum")
-   local header = { 0x45, 0x00, 0x00, 0x73, 0x00, 0x00, 0x40, 0x00,
-      0x40, 0x11, 0xb8, 0x61, 0xc0, 0xa8, 0x00, 0x01, 0xc0, 0xa8, 0x00, 0xc7 }
+local function create_packet(data)
    local p = {
-      data = ffi.new("uint8_t[?]", 20)
+      data = ffi.new("uint8_t[?]", #data)
    }
-   for i, byte in ipairs(header) do
-      p.data[i-1] = byte
+   for i=1,#data do
+      p.data[i-1] = data[i]
    end
-   assert(calculate_checksum(p, 0) == 0xb861)
-   print(("Checksum: 0x%x"):format(calculate_checksum(p, 0)))
+   return p
+end
+
+local function raw(data)
+   local result = {}
+   for byte in data:gmatch("(%x+)") do
+      table.insert(result, tonumber(byte, 16))
+   end
+   return result
+end
+
+local function testIPChecksum()
+   print("Test IP checksum")
+   local p = create_packet(raw([[
+      00 1b 21 a9 22 48 f0 de f1 61 b6 22 08 00 45 00
+      00 34 59 1a 40 00 40 06 b0 8e c0 a8 14 a9 6b 15
+      f0 b4 de 0b 01 bb e7 db 57 bc 91 cd 18 32 80 10
+      05 9f 38 2a 00 00 01 01 08 0a 06 0c 5c bd fa 4a
+      e1 65
+   ]]))
+   local csum = word16(p, ETHER_HDR_SIZE + 10)
+   assert(calculate_checksum(p) == csum)
+   print(("IP Checksum: 0x%x"):format(csum))
+   print("---")
+end
+
+local function testTCPChecksum()
+   print("Test TCP checksum")
+   local p = create_packet(raw([[
+      00 1b 21 a9 22 48 f0 de f1 61 b6 22 08 00 45 00
+      00 34 59 1a 40 00 40 06 b0 8e c0 a8 14 a9 6b 15
+      f0 b4 de 0b 01 bb e7 db 57 bc 91 cd 18 32 80 10
+      05 9f 38 2a 00 00 01 01 08 0a 06 0c 5c bd fa 4a
+      e1 65
+   ]]))
+   local csum = word16(p, TRANSPORT_BASE + 16)
+   assert(transport_checksum(p) == csum)
+   print(("TCP Checksum: 0x%x"):format(csum))
    print("---")
 end
 
 function selftest()
    testIPv4GetSet()
-   testChecksum()
+   testIPChecksum()
+   testTCPChecksum()
    print("OK")
 end
