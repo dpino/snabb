@@ -118,6 +118,7 @@ local function refresh_checksum(p)
    return false
 end
 
+-- Reads or writes source IP. It does not refresh checksum.
 local function src_ip(p, val)
    if ethertype(p) == PROTO_ARP then
       local offset = ETHER_HDR_SIZE + ARP_HDR_SIZE - 14
@@ -125,14 +126,11 @@ local function src_ip(p, val)
    end
    if ethertype(p) == PROTO_IPV4 then
       local offset = ETHER_HDR_SIZE + IPV4_HDR_SIZE - 8
-      local result = word32(p, offset, val)
-      if val then
-         refresh_checksum(p)
-      end
-      return result
+      return word32(p, offset, val)
    end
 end
 
+-- Reads or writes destination IP. It does not refresh checksum.
 local function dst_ip(p, val)
    if ethertype(p) == PROTO_ARP then
       local offset = ETHER_HDR_SIZE + ARP_HDR_SIZE - 4
@@ -140,16 +138,12 @@ local function dst_ip(p, val)
    end
    if ethertype(p) == PROTO_IPV4 then
       local offset = ETHER_HDR_SIZE + IPV4_HDR_SIZE - 4
-      local result = word32(p, offset, val)
-      if val then
-         refresh_checksum(p)
-      end
-      return result
+      return word32(p, offset, val)
    end
 end
 
 local function to_uint32(a, b, c, d)
-   return a * 2^24 + b * 2^16 + c * 2^8 + d
+   return a * 0x1000000 + b * 0x10000 + c * 0x100 + d
 end
 
 local function ip_to_uint32(ip)
@@ -203,15 +197,21 @@ end
 function BasicNAT:rewrite(p)
    -- Only attempt to alter ipv4 packets. Assume an Ethernet encapsulation.
    if p.data[12] ~= 8 or p.data[13] ~= 0 then return p end
+   local needs_refresh = false
    local ip = {
       src = src_ip(p),
       dst = dst_ip(p),
    }
    if self:is_private_network(ip.src) and self:is_public_network(ip.dst) then
       src_ip(p, self:mask(ip.src))
+      needs_refresh = true
    end
    if ip.dst == self.public_ip and self:is_public_network(ip.src) then
       dst_ip(p, self:unmask(ip.dst))
+      needs_refresh = true
+   end
+   if needs_refresh then
+      refresh_checksum(p)
    end
 end
 
@@ -256,8 +256,8 @@ local function testIPv4GetSet()
    word32(p, 0, ip)
    ip = word32(p, 0)
    -- Prints 255.153.102.51
-   assert("255.153.102.51" == format_ip(ip))
    print(("255.153.102.51 == %s"):format(format_ip(ip)))
+   assert("255.153.102.51" == format_ip(ip))
 
    -- Prints 65535
    local ip = 65535
