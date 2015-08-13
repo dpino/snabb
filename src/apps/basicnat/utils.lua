@@ -44,32 +44,30 @@ function byte(p, offset, val)
    if not val then
       return p.data[offset]
    end
-   for i, b in bytes(val, 1) do
-      p.data[offset] = b
-   end
+   p.data[offset] = val
 end
 
 -- Reads or sets a two bytes value into 'p' at 'offset'.
 function word16(p, offset, val)
    if not val then
       local d = p.data
-      return d[offset] * 2^8 + d[offset+1]
+      return d[offset] * 0x100 + d[offset+1]
    end
-   for i, b in bytes(val, 2) do
-      p.data[offset + i-1] = b
-   end
+   p.data[offset] = bit.rshift(val, 8)
+   p.data[offset+1] = bit.band(val, 0xff)
 end
 
 -- Reads or sets a four bytes value into 'p' at 'offset'.
 function word32(p, offset, val)
    if not val then
       local d = p.data
-      return d[offset] * 2^24 + d[offset+1] * 2^16 +
-         d[offset+2] * 2^8 + d[offset+3]
+      return d[offset] * 0x1000000 + d[offset+1] * 0x10000 +
+         d[offset+2] * 0x100 + d[offset+3]
    end
-   for i, b in bytes(val, 4) do
-      p.data[offset + i-1] = b
-   end
+   p.data[offset] = bit.rshift(val, 24)
+   p.data[offset+1] = bit.rshift(val, 16)
+   p.data[offset+2] = bit.rshift(val, 8)
+   p.data[offset+3] = bit.band(val, 0xff)
 end
 
 local function testUint16GetSet()
@@ -81,13 +79,13 @@ local function testUint16GetSet()
    p.data[1] = 0
 
    local val = word16(p, 0)
-   assert(val, 0xff00)
+   assert(val == 0xff00, "Wrong value")
    print(("0x%x == 0x%x"):format(val, 0xff00))
 
    word16(p, 0, 0xff00)
    val = word16(p, 0)
-   assert(val, 0xff00)
    print(("0x%x == 0x%x"):format(val, 0xff00))
+   assert(val == 0xff00, "Wrong value")
    print("---")
 end
 
@@ -102,13 +100,13 @@ local function testUint32GetSet()
    p.data[3] = 0xdd
 
    local val = word32(p, 0)
-   assert(val, 0xaabbccdd)
    print(("0x%x == 0x%x"):format(val, 0xaabbccdd))
+   assert(val == 0xaabbccdd, "Wrong value")
 
    word32(p, 0, 0xaabbccdd)
    val = word32(p, 0)
-   assert(val, 0xaabbccdd)
    print(("0x%x == 0x%x"):format(val, 0xaabbccdd))
+   assert(val == 0xaabbccdd, "Wrong value")
    print("---")
 end
 
