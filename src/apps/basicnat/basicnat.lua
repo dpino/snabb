@@ -1,7 +1,8 @@
 module(..., package.seeall)
 
+local ffi   = require("ffi")
+local lib   = require("core.lib")
 local utils = require("apps.basicnat.utils")
-local ffi = require("ffi")
 
 local bytes, byte, word16 = utils.bytes, utils.byte, utils.word16
 local word32 = utils.word32
@@ -267,33 +268,15 @@ local function testIPv4GetSet()
    print("---")
 end
 
-local function create_packet(data)
-   local p = {
-      data = ffi.new("uint8_t[?]", #data)
-   }
-   for i=1,#data do
-      p.data[i-1] = data[i]
-   end
-   return p
-end
-
-local function raw(data)
-   local result = {}
-   for byte in data:gmatch("(%x+)") do
-      table.insert(result, tonumber(byte, 16))
-   end
-   return result
-end
-
 local function testIPChecksum()
    print("Test IP checksum")
-   local p = create_packet(raw([[
-      00 1b 21 a9 22 48 f0 de f1 61 b6 22 08 00 45 00
+   local p = packet.from_string(lib.hexundump([[
+      52:54:00:02:02:02 52:54:00:01:01:01 08 00 45 00
       00 34 59 1a 40 00 40 06 b0 8e c0 a8 14 a9 6b 15
       f0 b4 de 0b 01 bb e7 db 57 bc 91 cd 18 32 80 10
       05 9f 38 2a 00 00 01 01 08 0a 06 0c 5c bd fa 4a
       e1 65
-   ]]))
+   ]], 66))
    local csum = word16(p, ETHER_HDR_SIZE + 10)
    assert(calculate_checksum(p) == csum)
    print(("IP Checksum: 0x%x"):format(csum))
@@ -302,13 +285,13 @@ end
 
 local function testTCPChecksum()
    print("Test TCP checksum")
-   local p = create_packet(raw([[
-      00 1b 21 a9 22 48 f0 de f1 61 b6 22 08 00 45 00
+   local p = packet.from_string(lib.hexundump([[
+      52:54:00:02:02:02 52:54:00:01:01:01 08 00 45 00
       00 34 59 1a 40 00 40 06 b0 8e c0 a8 14 a9 6b 15
       f0 b4 de 0b 01 bb e7 db 57 bc 91 cd 18 32 80 10
       05 9f 38 2a 00 00 01 01 08 0a 06 0c 5c bd fa 4a
       e1 65
-   ]]))
+   ]], 66))
    local csum = word16(p, TRANSPORT_BASE + 16)
    assert(transport_checksum(p) == csum)
    print(("TCP Checksum: 0x%x"):format(csum))
