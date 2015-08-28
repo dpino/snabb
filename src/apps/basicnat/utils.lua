@@ -1,6 +1,7 @@
 module(..., package.seeall)
 
 local ffi = require("ffi")
+local C = ffi.C
 
 -- Functions for managing packets.
 
@@ -50,8 +51,7 @@ end
 -- Reads or sets a two bytes value into 'p' at 'offset'.
 function word16(p, offset, val)
    if not val then
-      local d = p.data
-      return d[offset] * 0x100 + d[offset+1]
+      return C.ntohs(ffi.cast("uint16_t*", p.data + offset)[0])
    end
    p.data[offset] = bit.rshift(val, 8)
    p.data[offset+1] = bit.band(val, 0xff)
@@ -60,9 +60,7 @@ end
 -- Reads or sets a four bytes value into 'p' at 'offset'.
 function word32(p, offset, val)
    if not val then
-      local d = p.data
-      return d[offset] * 0x1000000 + d[offset+1] * 0x10000 +
-         d[offset+2] * 0x100 + d[offset+3]
+      return C.ntohl(ffi.cast("uint32_t*", p.data + offset)[0])
    end
    p.data[offset] = bit.rshift(val, 24)
    p.data[offset+1] = bit.rshift(val, 16)
