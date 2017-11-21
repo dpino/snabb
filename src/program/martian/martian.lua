@@ -6,8 +6,20 @@ local pcap = require("apps.pcap.pcap")
 
 local band, lshift, tobit = bit.band, bit.lshift, bit.tobit
 
+-- Converts a CIDR address such as 10.0.0.0/8 to {ip, cidr}, where
+-- ip is a network-byte ordered address
+-- cidr is an integer
+local function parse_cidr (network_ip)
+   assert(type(network_ip) == "string")
+   if not network_ip:match("/") then network_ip = network_ip.."/32" end
+   local ip, cidr = network_ip:match("(%d+.%d+.%d+.%d+)/(%d+)")
+   ip = assert(ipv4:pton(ip), "Not valid network_ip IP address: "..ip)
+   cidr = assert(tonumber(cidr), "Not valid CIDR value: "..cidr)
+   return {ip=ip, cidr=cidr}
+end
+
 -- Checks whether IP address belong to network IP address.
-function matches_network(ip, network)
+local function matches_network (ip, network)
    -- IP address in network-byte order, gets transformed to host-byte order uint32.
    local function touint32 (ip)
       return ip[0] * 2^24 + ip[1] * 2^16 + ip[2] * 2^8 + ip[3]
@@ -19,14 +31,9 @@ function matches_network(ip, network)
       ip = assert(ipv4:pton(ip), "Not valid IP address: "..ip)
    end
    if type(network) == "string" then
-      if not network:match("/") then network = network.."/32" end
-      local ip, cidr = network:match("(%d+.%d+.%d+.%d+)/(%d+)")
-      ip = assert(ipv4:pton(ip), "Not valid network IP address: "..ip)
-      cidr = assert(tonumber(cidr), "Not valid CIDR value: "..cidr)
-      network = {ip=ip, cidr=cidr}
-   else
-      assert(network.ip and tonumber(network.cidr))
+      network = parse_cidr(network)
    end
+   assert(network.ip and tonumber(network.cidr))
    assert(network.cidr > 0 and network.cidr <= 32,
       "CIDR not it range [1, 32]: "..network.cidr)
    return band(touint32(ip), mask(network.cidr)) == tobit(touint32(network.ip))
@@ -38,22 +45,22 @@ function MartianFilter.new ()
    local o = {
       -- See https://en.wikipedia.org/wiki/Martian_packet.
       filtered_networks = {
-         "0.0.0.0/8",
-         "10.0.0.0/8",
-         "100.64.0.0/10",
-         "127.0.0.0/8",
-         "127.0.53.53/32",
-         "169.254.0.0/16",
-         "172.16.0.0/12",
-         "192.0.0.0/24",
-         "192.0.2.0/24",
-         "192.168.0.0/16",
-         "198.18.0.0/15",
-         "198.51.100.0/24",
-         "203.0.113.0/24",
-         "224.0.0.0/4",
-         "240.0.0.0/4",
-         "255.255.255.255/32",
+         parse_cidr"0.0.0.0/8",
+         parse_cidr"10.0.0.0/8",
+         parse_cidr"100.64.0.0/10",
+         parse_cidr"127.0.0.0/8",
+         parse_cidr"127.0.53.53",
+         parse_cidr"169.254.0.0/16",
+         parse_cidr"172.16.0.0/12",
+         parse_cidr"192.0.0.0/24",
+         parse_cidr"192.0.2.0/24",
+         parse_cidr"192.168.0.0/16",
+         parse_cidr"198.18.0.0/15",
+         parse_cidr"198.51.100.0/24",
+         parse_cidr"203.0.113.0/24",
+         parse_cidr"224.0.0.0/4",
+         parse_cidr"240.0.0.0/4",
+         parse_cidr"255.255.255.255/32",
       }
    }
    return setmetatable(o, {__index=MartianFilter})
