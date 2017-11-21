@@ -81,9 +81,9 @@ function MartianFilter:push ()
    while not link.empty(input) do
       local pkt = link.receive(input)
       local ip_hdr = ipv4:new_from_mem(pkt.data + 14, 20)
-      local ret = self:is_martian(ip_hdr:src())
-      local ip = ip_hdr:src()
-      if not self:is_martian(ip) then
+      if self:is_martian(ip_hdr:src()) or self:is_martian(ip_hdr:dst()) then
+         packet.free(pkt)
+      else
          link.transmit(output, pkt)
       end
    end
