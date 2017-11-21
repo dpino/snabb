@@ -4,27 +4,32 @@ local bit = require("bit")
 local ipv4 = require("lib.protocol.ipv4")
 local pcap = require("apps.pcap.pcap")
 
-local lshift, band = bit.lshift, bit.band
+local band, lshift, tobit = bit.band, bit.lshift, bit.tobit
 
--- Checks whether src IP address belong to dst network IP address.
-function matches_network(src, dst)
+-- Checks whether IP address belong to network IP address.
+function matches_network(ip, network)
    -- IP address in network-byte order, gets transformed to host-byte order uint32.
    local function touint32 (ip)
       return ip[0] * 2^24 + ip[1] * 2^16 + ip[2] * 2^8 + ip[3]
    end
-   if not dst:match("/") then
-      dst = dst.."/32"
+   local function mask (cidr)
+      return lshift(2^(cidr+1)-1, 32-cidr)
    end
-   local network_ip, cidr = dst:match("(%d+.%d+.%d+.%d+)/(%d+)")
-   cidr = tonumber(cidr)
-   assert(cidr > 0 and cidr <= 32, "Not valid cidr: "..cidr)
-   network_ip = assert(ipv4:pton(network_ip),
-      "Not valid network IP address: "..network_ip)
-   if type(src) == "string" then
-      src = assert(ipv4:pton(src), "Not valid IP address: "..src)
+   if type(ip) == "string" then
+      ip = assert(ipv4:pton(ip), "Not valid IP address: "..ip)
    end
-   local mask = lshift(2^(cidr+1)-1, 32-cidr)
-   return band(touint32(src), mask) == touint32(network_ip)
+   if type(network) == "string" then
+      if not network:match("/") then network = network.."/32" end
+      local ip, cidr = network:match("(%d+.%d+.%d+.%d+)/(%d+)")
+      ip = assert(ipv4:pton(ip), "Not valid network IP address: "..ip)
+      cidr = assert(tonumber(cidr), "Not valid CIDR value: "..cidr)
+      network = {ip=ip, cidr=cidr}
+   else
+      assert(network.ip and tonumber(network.cidr))
+   end
+   assert(network.cidr > 0 and network.cidr <= 32,
+      "CIDR not it range [1, 32]: "..network.cidr)
+   return band(touint32(ip), mask(network.cidr)) == tobit(touint32(network.ip))
 end
 
 local MartianFilter = {}
@@ -58,7 +63,7 @@ function MartianFilter:is_martian (ip)
    for _, each in ipairs(self.filtered_networks) do
       if matches_network(ip, each) then
          return true
-      end 
+      end
    end
    return false
 end
@@ -70,7 +75,8 @@ function MartianFilter:push ()
       local pkt = link.receive(input)
       local ip_hdr = ipv4:new_from_mem(pkt.data + 14, 20)
       local ret = self:is_martian(ip_hdr:src())
-      if not self:is_martian(ip_hdr:src()) then
+      local ip = ip_hdr:src()
+      if not self:is_martian(ip) then
          link.transmit(output, pkt)
       end
    end
@@ -97,4 +103,6 @@ function selftest ()
    assert(matches_network("10.0.0.1", "10.0.0.0/8"))
    assert(not matches_network("10.0.0.1", "10.0.0.0/32"))
    assert(not matches_network("10.0.0.1", "192.168.16.0/8"))
+   assert(matches_network("192.168.0.0", "192.168.0.0/16"))
+   print("ok")
 end
