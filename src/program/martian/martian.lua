@@ -6,6 +6,9 @@ local pcap = require("apps.pcap.pcap")
 
 local band, lshift, tobit = bit.band, bit.lshift, bit.tobit
 
+local IPV4_OFFSET = 14
+local IPV4_SIZE = 20
+
 -- Converts a CIDR address such as 10.0.0.0/8 to {ip, cidr}, where
 -- ip is a network-byte ordered address
 -- cidr is an integer
@@ -80,7 +83,7 @@ function MartianFilter:push ()
 
    while not link.empty(input) do
       local pkt = link.receive(input)
-      local ip_hdr = ipv4:new_from_mem(pkt.data + 14, 20)
+      local ip_hdr = ipv4:new_from_mem(pkt.data + IPV4_OFFSET, IPV4_SIZE)
       if self:is_martian(ip_hdr:src()) or self:is_martian(ip_hdr:dst()) then
          packet.free(pkt)
       else
