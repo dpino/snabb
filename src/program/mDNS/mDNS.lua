@@ -5,7 +5,11 @@ local datagram = require("lib.protocol.datagram")
 local ipv4 = require("lib.protocol.ipv4")
 local ethernet = require("lib.protocol.ethernet")
 local udp = require("lib.protocol.udp")
+local lwdebug = require("apps.lwaftr.lwdebug")
+local RawSocket = require("apps.socket.raw").RawSocket
+local filter = require("lib.pcap.filter")
 
+local print_pkt = lwdebug.print_pkt
 local htons, ntohs = lib.htons, lib.ntohs
 
 local ffi = require("ffi")
@@ -55,15 +59,24 @@ function mDNS.build_request (eth, ip)
    return pkt
 end
 
+function mDNS.build_request()
+	return packet.from_string(lib.hexundump([[
+		01:00:5e:00:00:fb 44:85:00:4f:b8:fc 08 00 45 00
+		00 55 32 7c 00 00 01 11 8f 5a c0 a8 56 1e e0 00
+		00 fb e3 53 14 e9 00 41 89 9d 25 85 01 20 00 01
+		00 00 00 00 00 01 09 5f 73 65 72 76 69 63 65 73
+		07 5f 64 6e 73 2d 73 64 04 5f 75 64 70 05 6c 6f
+		63 61 6c 00 00 0c 00 01 00 00 29 10 00 00 00 00
+		00 00 00
+	]], 99))
+end
+
 function mDNS:pull ()
-   local tx = assert(pull.output.tx)
-   local now = main.time()
-   while not link.full(tx) do
-      -- Send mDNS request every ellapse seconds.
-      if not self.last or now - self.last > self.ellapse then
-         link.transmit(output, self.request)
-         self.last = now
-      end
+   local tx = assert(self.output.tx)
+   -- Send request only once.
+   while not link.full(tx) and not self.done do
+      link.transmit(tx, self.request)
+      self.done = true
    end
 end
 
@@ -72,7 +85,24 @@ function mDNS:push ()
 
    while not link.empty(input) do
       local pkt = link.receive(input)
+
       -- Check packet is DNS.
+      if filter:new("dst port 5353"):match(pkt.data, pkt.length) then
+         local payload = ffi.new('uint8_t[?]', 256)
+         local len = pkt.length - 40
+         ffi.copy(payload, pkt.data + 40, len)
+
+         --[[
+         for i=0,len-1 do
+            local c = string.lower(string.char(payload[i]))
+            if c:match("%x") then
+               io.write(c)
+            end
+         end
+         io.write("\n")
+         --]]
+         print(ffi.string(payload, len))
+      end
    end
 end
 
@@ -81,7 +111,8 @@ function mDNS:log (pkt)
 end
 
 function run (args)
-   local iface = assert(args[1], "Not valid interface: "..iface)
+   -- local iface = assert(args[1], "Not valid interface: "..iface)
+   local iface = "wlp3s0"
 
    local c = config.new()
    config.app(c, "nic", RawSocket, iface)
