@@ -1,3 +1,7 @@
-Usage: snabb dnssd
+Usage: snabb dnssd <iface>
 
 Lists all devices and services available in a local network.  Press Ctrl+C to stop program.
+
+Example:
+
+$ sudo ./snabb dnssd wlp3s0
