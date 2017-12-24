@@ -1,6 +1,8 @@
 module(..., package.seeall)
 
 local lib = require("core.lib")
+local RawSocket = require("apps.socket.raw").RawSocket
+local basic_apps = require("apps.basic.basic_apps")
 
 local long_opts = {
    help = "h",
@@ -22,9 +24,18 @@ function parse_args (args)
 end
 
 function run(args)
-   local iface = parse_args(args)
+   args = parse_args(args)
+   local iface = assert(args[1])
 
-   print("dnssd")
+   print(("Capturing packets from interface '%s'"):format(iface))
+
+   local c = config.new()
+   config.app(c, "iface", RawSocket, iface)
+   config.app(c, "sink", basic_apps.Sink)
+   config.link(c, "iface.tx -> sink.input")
+
+   engine.configure(c)
+   engine.main({duration=1, report = {showapps = true, showlinks = true}})
 end
 
 function selftest()
