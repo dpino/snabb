@@ -1,0 +1,3 @@
+Usage: snabb dnssd
+
+Lists all devices and services available in a local network.  Press Ctrl+C to stop program.
