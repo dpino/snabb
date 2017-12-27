@@ -1,4 +1,8 @@
-Usage: snabb dnssd <iface>
+Usage: snabb dnssd OPTS <iface>
+
+Options:
+
+   -p|--pcap <filename>    Read incoming packets from pcap file.
 
 Lists all devices and services available in a local network.  Press Ctrl+C to stop program.
 
