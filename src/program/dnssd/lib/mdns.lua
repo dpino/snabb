@@ -71,7 +71,7 @@ local dns_record_ptr_ptr_t = ffi.typeof("$*", dns_record_ptr_t)
 local dns_record_a_t = ffi.typeof([[
    struct {
       $ h;
-      uint32_t address;
+      uint8_t address[4];
    } __attribute__((packed))
 ]], dns_record_head_t)
 local dns_record_a_ptr_t = ffi.typeof("$*", dns_record_a_t)
@@ -102,6 +102,7 @@ local dns_record_txt_t = ffi.typeof([[
    struct {
       $ h;
       char** chunks;
+      uint8_t nchunks;
    } __attribute__((packed))
 ]], dns_record_head_t)
 local dns_record_txt_ptr_t = ffi.typeof("$*", dns_record_txt_t)
@@ -132,7 +133,28 @@ local function eos (payload)
    error("Couldn't find end of string")
 end
 
+local function hex(val)
+   print(("0x%.2x"):format(tonumber(val)))
+end
+
+local function hexn(data, n)
+   for i=0,n-1 do hex(ffi.cast("uint8_t*", data)[i]) end
+end
+
+-- Human readable string.
+local function hrstring (cdata)
+   local t = {}
+   local ptr, i = cdata, 0
+   while ptr[i] ~= 0 do
+      local c = ptr[i]
+      table.insert(t, c > 31 and string.char(c) or ".")
+      i = i + 1
+   end
+   return table.concat(t)
+end
+
 function DNS.parse_record (payload)
+   -- print("parse_record")
    -- Create record depending on type.
    -- XXX: I'm not sure what's the best way to check a DNS record type.
    -- Records start with a 'name' field, which in the case of PTR records is a
@@ -156,7 +178,7 @@ function DNS.parse_record (payload)
 
    -- Copy head.
    dns_record.h.name = ffi.new("char[?]", len)
-   ffi.copy(dns_record.h.name, payload, len)
+   copy_string(dns_record.h.name, payload, len)
    local ptr = ffi.cast(dns_record_head_info_ptr_t, payload + len)
    dns_record.h.type = ptr.type
    dns_record.h.class = ptr.class
@@ -168,7 +190,7 @@ function DNS.parse_record (payload)
    local total_len = len + ffi.sizeof(dns_record_head_info_t) + data_length
    local offset = len + ffi.sizeof(dns_record_head_info_t)
    if type == A then
-      dns_record.address = r32(payload + offset)
+      ffi.copy(dns_record.address, payload + offset, 4)
    elseif type == PTR then
       dns_record.domain_name = ffi.new("char[?]", data_length + 1)
       copy_string(dns_record.domain_name, payload + offset, data_length)
@@ -188,13 +210,15 @@ function DNS.parse_record (payload)
          ptr = ptr + 1
          local str = ffi.new("char[?]", size + 1)
          copy_string(str, ptr, size)
+         table.insert(chunks, str)
          data_length = data_length - size
          ptr = ptr + size
       end
       dns_record.chunks = ffi.new("char*[?]", #chunks)
       for i=1,#chunks do
-         dns_record.chunks[i] = chunks[i]
+         dns_record.chunks[i-1] = chunks[i]
       end
+      dns_record.nchunks = #chunks
    end
 
    return dns_record, total_len
@@ -215,24 +239,39 @@ function DNS.parse_records (payload, n)
 end
 
 function DNS.print(rr)
+   local w = io.write
+   local function wln (...) w(...) w("\n") end
+   local function tostr (pchar)
+      local ret = {}
+      local ptr = pchar
+      while ptr ~= 0 do
+         local c = ptr[0]
+         table.insert(ret, c > 31 and string.char(c) or ".")
+         ptr = ptr + 1
+      end
+      return table.concat(ret, "")
+   end
    local type = rr.h.type
    if type == A then
-      print("type: A")
-      local addr = ffi.cast("uint8_t*", rr.address)
-      -- print(ipv4:ntop(addr))
+      w("A: ")
+      wln(ipv4:ntop(rr.address))
    elseif type == PTR then
-      print("type: PTR")
-      print(ffi.string(rr.domain_name))
+      w("PTR: ")
+      w("(")
+      w("name: "..hrstring(rr.h.name).."; ")
+      w("domain-name: "..hrstring(rr.domain_name))
+      wln(")")
    elseif type == SRV then
-      print("type: SRV")
-      print(ffi.string(rr.target))
+      w("SRV: ")
+      wln(hrstring(rr.target))
    elseif type == TXT then
-      print("type: TXT")
-      for _, chunk in ipairs(rr.chunks) do
-         io.write(ffi.string(chunk))
-         io.write(";")
+      w("TXT ")
+      w("(")
+      for i=0, rr.nchunks-1 do
+         w(hrstring(rr.chunks[i]))
+         w(";")
       end
-      print("")
+      wln(")")
    end
 end
 
@@ -245,7 +284,7 @@ MDNS = {
 local mdns_header_t = ffi.typeof[[
    struct {
       uint16_t id;
-      uint16_t flag;
+      uint16_t flags;
       uint16_t questions;
       uint16_t answer_rrs;
       uint16_t authority_rrs;
@@ -270,7 +309,7 @@ function MDNS.parse_header (pkt)
    local mdns_payload_offset = ethernet_header_size + ipv4_header_size + udp_header_size
    ffi.copy(mdns_header, pkt.data + mdns_payload_offset, ffi.sizeof(mdns_header_t))
    mdns_header.id = ntohs(mdns_header.id)
-   mdns_header.flag = ntohs(mdns_header.flag)
+   mdns_header.flags = ntohs(mdns_header.flags)
    mdns_header.questions = ntohs(mdns_header.questions)
    mdns_header.answer_rrs = ntohs(mdns_header.answer_rrs)
    mdns_header.authority_rrs = ntohs(mdns_header.authority_rrs)
@@ -278,27 +317,34 @@ function MDNS.parse_header (pkt)
    return mdns_header, ffi.sizeof(mdns_header_t)
 end
 
+local STANDARD_QUERY_RESPONSE = 0x8400
+
+function MDNS.is_response (pkt)
+   local header = MDNS.parse_header(pkt)
+   return header.flags == STANDARD_QUERY_RESPONSE
+end
+
 local function collect_records (payload, t, n)
    local rrs, len = DNS.parse_records(payload, n)
    for _, each in ipairs(rrs) do table.insert(t, each) end
-   payload = payload + len
+   return payload + len
 end
 
 function MDNS.parse_response (pkt)
    assert(MDNS.is_mdns(pkt))
    local mdns_hdr, size = MDNS.parse_header(pkt)
    local payload_offset = ethernet_header_size + ipv4_header_size + udp_header_size
-   local payload = pkt.data + payload_offset + size + 1
+   local payload = pkt.data + payload_offset + size
    local ret = {
       questions = {},
       answer_rrs = {},
       authority_rrs = {},
       additional_rrs = {},
    }
-   collect_records(payload, ret.questions, mdns_hdr.questions)
-   collect_records(payload, ret.answer_rrs, mdns_hdr.answer_rrs)
-   collect_records(payload, ret.authority_rrs, mdns_hdr.authority_rrs)
-   collect_records(payload, ret.additional_rrs, mdns_hdr.additional_rrs)
+   payload = collect_records(payload, ret.questions, mdns_hdr.questions)
+   payload = collect_records(payload, ret.answer_rrs, mdns_hdr.answer_rrs)
+   payload = collect_records(payload, ret.authority_rrs, mdns_hdr.authority_rrs)
+   payload = collect_records(payload, ret.additional_rrs, mdns_hdr.additional_rrs)
    return ret
 end
 

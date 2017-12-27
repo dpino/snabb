@@ -94,6 +94,7 @@ function DNSSD:push ()
 end
 
 function DNSSD:log (pkt)
+   if not (MDNS.is_mdns(pkt) and MDNS.is_response(pkt)) then return end
    local response = MDNS.parse_response(pkt)
    local answer_rrs = response.answer_rrs
    if #answer_rrs > 0 then
@@ -112,6 +113,7 @@ end
 function run(args)
    local opts, args = parse_args(args)
 
+   local duration
    local c = config.new()
    config.app(c, "dnssd", DNSSD)
    -- config.link(c, "dnssd.output -> iface.rx")
@@ -119,6 +121,7 @@ function run(args)
       print("Reading from file: "..opts.pcap)
       config.app(c, "pcap", pcap.PcapReader, opts.pcap)
       config.link(c, "pcap.output-> dnssd.input")
+      duration = 3
    elseif opts.interface then
       local iface = opts.interface
       print(("Capturing packets from interface '%s'"):format(iface))
@@ -128,5 +131,5 @@ function run(args)
       error("Unreachable")
    end
    engine.configure(c)
-   engine.main({report = {showapps = true, showlinks = true}})
+   engine.main({duration = duration, report = {showapps = true, showlinks = true}})
 end
