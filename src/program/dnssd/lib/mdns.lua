@@ -150,7 +150,6 @@ function DNS.parse_record (payload)
    else
       len = eos(payload)
       type = r16(payload + len)
-      assert(type == PTR)
    end
    local dns_record = new_dns_record(type)
    if not dns_record then return nil, 0 end
@@ -213,6 +212,28 @@ function DNS.parse_records (payload, n)
       table.insert(rrs, rr)
    end
    return rrs, total_len
+end
+
+function DNS.print(rr)
+   local type = rr.h.type
+   if type == A then
+      print("type: A")
+      local addr = ffi.cast("uint8_t*", rr.address)
+      -- print(ipv4:ntop(addr))
+   elseif type == PTR then
+      print("type: PTR")
+      print(ffi.string(rr.domain_name))
+   elseif type == SRV then
+      print("type: SRV")
+      print(ffi.string(rr.target))
+   elseif type == TXT then
+      print("type: TXT")
+      for _, chunk in ipairs(rr.chunks) do
+         io.write(ffi.string(chunk))
+         io.write(";")
+      end
+      print("")
+   end
 end
 
 MDNS = {
