@@ -28,9 +28,11 @@ end
 local function contains (set, key)
    return set[key]
 end
-local function copy_string(dst, src, len)
+local function copy_string (src, len)
+   local dst = ffi.new("char[?]", len + 1)
    ffi.copy(dst, src, len)
    dst[len] = 0
+   return dst
 end
 
 DNS = {}
@@ -177,8 +179,7 @@ function DNS.parse_record (payload)
    if not dns_record then return nil, 0 end
 
    -- Copy head.
-   dns_record.h.name = ffi.new("char[?]", len)
-   copy_string(dns_record.h.name, payload, len)
+   dns_record.h.name = copy_string(payload, len)
    local ptr = ffi.cast(dns_record_head_info_ptr_t, payload + len)
    dns_record.h.type = ptr.type
    dns_record.h.class = ptr.class
@@ -192,25 +193,22 @@ function DNS.parse_record (payload)
    if type == A then
       ffi.copy(dns_record.address, payload + offset, 4)
    elseif type == PTR then
-      dns_record.domain_name = ffi.new("char[?]", data_length + 1)
-      copy_string(dns_record.domain_name, payload + offset, data_length)
+      dns_record.domain_name = copy_string(payload + offset, data_length)
    elseif type == SRV then
       local ptr = ffi.cast(srv_info_ptr_t, payload + offset)
       dns_record.priority = ptr.priority
       dns_record.weight = ptr.weight
       dns_record.port = ptr.port
-      local target_len = data_length - ffi.sizeof(srv_info_t)
-      dns_record.target = ffi.new("char[?]", target_len + 1)
-      copy_string(dns_record.target, payload + offset + ffi.sizeof(srv_info_t), target_len)
+      local size = ffi.sizeof(srv_info_t)
+      local target_len = data_length - size
+      dns_record.target = copy_string(payload + offset + size, target_len)
    elseif type == TXT then
       local chunks = {}
       local ptr = payload + offset
       while data_length > 0 do
          local size = ffi.cast("uint8_t*", ptr)[0]
          ptr = ptr + 1
-         local str = ffi.new("char[?]", size + 1)
-         copy_string(str, ptr, size)
-         table.insert(chunks, str)
+         table.insert(chunks, copy_string(ptr, size))
          data_length = data_length - size
          ptr = ptr + size
       end
