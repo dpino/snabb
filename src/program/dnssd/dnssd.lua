@@ -41,9 +41,9 @@ function parse_args (args)
    end
    args = lib.dogetopt(args, handlers, "hp:i:", long_opts)
    if opts.pcap or opts.interface then
-      assert(#args == 0, function() usage(1) end)
+      if #args ~= 0 then usage(1) end
    else
-      assert(#args == 1, function() usage(1) end)
+      if #args ~= 1 then usage(1) end
       local filename = args[1]
       if fexists(filename) then
          opts.pcap = filename
