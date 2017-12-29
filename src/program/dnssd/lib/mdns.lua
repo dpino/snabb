@@ -146,7 +146,9 @@ end
 -- Human readable string.
 local function hrstring (cdata)
    local t = {}
-   local ptr, i = cdata, 0
+   --- XXX: character 0, although correct according to Wireshark, it seems to
+   -- contain garbage. Thus, I skip it.
+   local ptr, i = cdata, 1
    while ptr[i] ~= 0 do
       local c = ptr[i]
       table.insert(t, c > 31 and string.char(c) or ".")
@@ -239,19 +241,9 @@ end
 function DNS.print(rr)
    local w = io.write
    local function wln (...) w(...) w("\n") end
-   local function tostr (pchar)
-      local ret = {}
-      local ptr = pchar
-      while ptr ~= 0 do
-         local c = ptr[0]
-         table.insert(ret, c > 31 and string.char(c) or ".")
-         ptr = ptr + 1
-      end
-      return table.concat(ret, "")
-   end
    local type = rr.h.type
    if type == A then
-      w("A: ")
+      w("Address: ")
       wln(ipv4:ntop(rr.address))
    elseif type == PTR then
       w("PTR: ")
@@ -261,9 +253,11 @@ function DNS.print(rr)
       wln(")")
    elseif type == SRV then
       w("SRV: ")
-      wln(hrstring(rr.target))
+      w("(")
+      w("target: "..hrstring(rr.target))
+      wln(")")
    elseif type == TXT then
-      w("TXT ")
+      w("TXT: ")
       w("(")
       for i=0, rr.nchunks-1 do
          w(hrstring(rr.chunks[i]))

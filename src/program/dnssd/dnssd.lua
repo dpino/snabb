@@ -86,7 +86,6 @@ function DNSSD:push ()
    while not link.empty(input) do
       local pkt = link.receive(input)
       if MDNS.is_mdns(pkt) then
-         print("is_mdns")
          self:log(pkt)
       end
       packet.free(pkt)
