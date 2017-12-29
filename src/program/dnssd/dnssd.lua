@@ -63,8 +63,16 @@ function DNSSD.new (args)
    return setmetatable(o, {__index = DNSSD})
 end
 
+local pkt = packet.from_string(lib.hexundump([[
+   01:00:5e:00:00:fb c8:5b:76:ca:30:44 08 00 45 00
+   00 4a f2 f4 40 00 ff 11 e6 d3 c0 a8 00 36 e0 00
+   00 fb 14 e9 14 e9 00 36 a2 21 00 00 00 00 00 01
+   00 00 00 00 00 00 09 5f 73 65 72 76 69 63 65 73
+   07 5f 64 6e 73 2d 73 64 04 5f 75 64 70 05 6c 6f
+   63 61 6c 00 00 0c 00 01
+]], 88))
+
 -- Generate a new broadcast mDNS packet every interval seconds.
---[[
 function DNSSD:pull ()
    local output = assert(self.output.output)
 
@@ -78,7 +86,6 @@ function DNSSD:pull ()
       end
    end
 end
---]]
 
 function DNSSD:push ()
    local input = assert(self.input.input)

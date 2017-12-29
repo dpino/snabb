@@ -309,6 +309,18 @@ function MDNS.parse_header (pkt)
    return mdns_header, ffi.sizeof(mdns_header_t)
 end
 
+function MDNS.query (opts)
+   local pkt = packet.from_string(lib.hexundump([[
+      01:00:5e:00:00:fb c8:5b:76:ca:30:44 08 00 45 00
+      00 4a f2 f4 40 00 ff 11 e6 d3 c0 a8 00 36 e0 00
+      00 fb 14 e9 14 e9 00 36 a2 21 00 00 00 00 00 01
+      00 00 00 00 00 00 09 5f 73 65 72 76 69 63 65 73
+      07 5f 64 6e 73 2d 73 64 04 5f 75 64 70 05 6c 6f
+      63 61 6c 00 00 0c 00 01
+   ]], 88))
+   return pkt
+end
+
 local STANDARD_QUERY_RESPONSE = 0x8400
 
 function MDNS.is_response (pkt)
@@ -322,7 +334,7 @@ local function collect_records (payload, t, n)
    return payload + len
 end
 
-function MDNS.parse_response (pkt)
+function MDNS.parse_packet (pkt)
    assert(MDNS.is_mdns(pkt))
    local mdns_hdr, size = MDNS.parse_header(pkt)
    local payload_offset = ethernet_header_size + ipv4_header_size + udp_header_size
@@ -369,7 +381,10 @@ function selftest()
       34 33 34 62 31 64 35 38 38 62 61 65 c0 1d c1 2d
       00 01 80 01 00 00 00 78 00 04 c0 a8 56 40
    ]], 398))
-   local response = MDNS.parse_response(pkt)
+   local response = MDNS.parse_packet(pkt)
    assert(#response.answer_rrs == 1)
    assert(#response.additional_rrs == 3)
+
+   local request = MDNS.parse_packet(MDNS.query())
+   assert(#request.questions == 1)
 end
