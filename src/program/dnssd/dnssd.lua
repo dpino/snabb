@@ -59,24 +59,17 @@ DNSSD = {}
 function DNSSD.new (args)
    local o = {
       interval = 2, -- Delay between broadcast messages.
+      threshold = 0,
    }
    return setmetatable(o, {__index = DNSSD})
 end
 
-local pkt = packet.from_string(lib.hexundump([[
-   01:00:5e:00:00:fb c8:5b:76:ca:30:44 08 00 45 00
-   00 4a f2 f4 40 00 ff 11 e6 d3 c0 a8 00 36 e0 00
-   00 fb 14 e9 14 e9 00 36 a2 21 00 00 00 00 00 01
-   00 00 00 00 00 00 09 5f 73 65 72 76 69 63 65 73
-   07 5f 64 6e 73 2d 73 64 04 5f 75 64 70 05 6c 6f
-   63 61 6c 00 00 0c 00 01
-]], 88))
-
 -- Generate a new broadcast mDNS packet every interval seconds.
 function DNSSD:pull ()
-   local output = assert(self.output.output)
+   local output = self.output.output
+   if not output then return end
 
-   while not link.full(output) do
+   -- while not link.full(output) do
       local now = os.time()
       if now > self.threshold then
          self.threshold = now + self.interval
@@ -84,7 +77,7 @@ function DNSSD:pull ()
          local pkt = MDNS.query()
          link.transmit(output, pkt)
       end
-   end
+   -- end
 end
 
 function DNSSD:push ()
@@ -94,6 +87,8 @@ function DNSSD:push ()
       local pkt = link.receive(input)
       if MDNS.is_mdns(pkt) then
          self:log(pkt)
+      else
+         -- print("not mdns")
       end
       packet.free(pkt)
    end
@@ -101,7 +96,7 @@ end
 
 function DNSSD:log (pkt)
    if not (MDNS.is_mdns(pkt) and MDNS.is_response(pkt)) then return end
-   local response = MDNS.parse_response(pkt)
+   local response = MDNS.parse_packet(pkt)
    local answer_rrs = response.answer_rrs
    if #answer_rrs > 0 then
       for _, rr in ipairs(answer_rrs) do
@@ -122,20 +117,22 @@ function run(args)
    local duration
    local c = config.new()
    config.app(c, "dnssd", DNSSD)
-   -- config.link(c, "dnssd.output -> iface.rx")
    if opts.pcap then
       print("Reading from file: "..opts.pcap)
       config.app(c, "pcap", pcap.PcapReader, opts.pcap)
       config.link(c, "pcap.output-> dnssd.input")
-      duration = 3
+      duration = 4
    elseif opts.interface then
       local iface = opts.interface
       print(("Capturing packets from interface '%s'"):format(iface))
       config.app(c, "iface", RawSocket, iface)
       config.link(c, "iface.tx -> dnssd.input")
+      config.link(c, "dnssd.output -> iface.rx")
+      duration = 10
    else
       error("Unreachable")
    end
+   engine.busy = false
    engine.configure(c)
    engine.main({duration = duration, report = {showapps = true, showlinks = true}})
 end
