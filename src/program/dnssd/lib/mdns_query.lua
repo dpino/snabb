@@ -114,7 +114,7 @@ local function build_payload (queries)
    local header = ffi.new(mdns_header_t)
 
    -- Set header.
-   header.id = 0 -- htons(rand16())
+   header.id = 0
    header.flags = STANDARD_QUERY
    header.questions = htons(#queries)
    header.answer_rrs = 0
@@ -158,22 +158,23 @@ function mDNSQuery:build (...)
    local ipv4_h = ipv4:new({dst = MDNS_DST_IPV4,
                             src = ipv4:pton(self.src_ipv4),
                             protocol = UDP_PROTOCOL,
-                            id = 0x0c6f,
-                            -- id = htons(rand16()),
-                            flags = 0x02,
-                            ttl = 255})
+                            ttl = 255,
+                            flags = 0x02})
    local udp_h = udp:new({src_port = 5353,
                           dst_port = MDNS_DST_PORT})
    -- Add payload.
    local payload, len = build_payload(names)
-   -- Set IPV4's total-length.
-   ipv4_h:total_length(ipv4_h:sizeof() + udp_h:sizeof() + len)
+   -- Calculate checksums.
    udp_h:length(udp_h:sizeof() + len)
+   udp_h:checksum(payload, len, ipv4_h)
+   ipv4_h:total_length(ipv4_h:sizeof() + udp_h:sizeof() + len)
+   ipv4_h:checksum()
    -- Generate packet.
    dgram:payload(payload, len)
    dgram:push(udp_h)
    dgram:push(ipv4_h)
    dgram:push(ether_h)
+
    return dgram:packet()
 end
 
