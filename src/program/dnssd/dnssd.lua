@@ -1,6 +1,6 @@
 module(..., package.seeall)
 
-local DNS = require("program.dnssd.lib.mdns").DNS
+local DNS = require("program.dnssd.lib.dns").DNS
 local MDNS = require("program.dnssd.lib.mdns").MDNS
 local RawSocket = require("apps.socket.raw").RawSocket
 local basic_apps = require("apps.basic.basic_apps")
