@@ -124,18 +124,27 @@ local function eos (payload)
    error("Couldn't find end of string")
 end
 
--- Human readable string.
-local function hrstring (cdata)
+-- Reads a string which has the format (length, char*).  If there are several
+-- chunks they got separated by a dot.
+local function format_string (cdata)
    local t = {}
-   --- XXX: character 0, although correct according to Wireshark, it seems to
-   -- contain garbage. Thus, I skip it.
-   local ptr, i = cdata, 1
+   local ptr, i = cdata, 0
    while ptr[i] ~= 0 do
-      local c = ptr[i]
-      table.insert(t, c > 31 and string.char(c) or ".")
+      -- Read uint8.
+      local len = tonumber(ptr[i])
+      if len <= 0 then break end
+      -- Read string.
       i = i + 1
+      for j=1,len do
+         table.insert(t, string.char(ptr[i]))
+         i = i + 1
+      end
+      -- Insert dot to separate parts.
+      table.insert(t, ".")
    end
-   return table.concat(t)
+   -- Remove latest dot.
+   local ret = table.concat(t)
+   return ret:sub(1,#ret-1)
 end
 
 function DNS.parse_record (payload)
@@ -189,10 +198,9 @@ function DNS.parse_record (payload)
       local ptr = payload + offset
       while data_length > 0 do
          local size = ffi.cast("uint8_t*", ptr)[0]
-         ptr = ptr + 1
-         table.insert(chunks, copy_string(ptr, size))
+         table.insert(chunks, copy_string(ptr, size + 1))
          data_length = data_length - size
-         ptr = ptr + size
+         ptr = ptr + size + 1
       end
       dns_record.chunks = ffi.new("char*[?]", #chunks)
       for i=1,#chunks do
@@ -228,20 +236,23 @@ function DNS.print(rr)
    elseif type == PTR then
       w("PTR: ")
       w("(")
-      w("name: "..hrstring(rr.h.name).."; ")
-      w("domain-name: "..hrstring(rr.domain_name))
+      w("name: "..format_string(rr.h.name).."; ")
+      w("domain-name: "..format_string(rr.domain_name))
       wln(")")
    elseif type == SRV then
       w("SRV: ")
       w("(")
-      w("target: "..hrstring(rr.target))
+      w("target: "..format_string(rr.target))
       wln(")")
    elseif type == TXT then
       w("TXT: ")
       w("(")
       for i=0, rr.nchunks-1 do
-         w(hrstring(rr.chunks[i]))
-         w(";")
+         local str = format_string(rr.chunks[i])
+         if #str > 0 then
+            w(str)
+            w(";")
+         end
       end
       wln(")")
    end
