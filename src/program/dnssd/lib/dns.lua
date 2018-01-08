@@ -105,38 +105,33 @@ local function new_dns_record (type)
    end
 end
 
--- Finds first end of string in payload.
-local function eos (payload)
-   local i = 0
-   for i=0, 9660 do
-      if payload[i] == 0 then return i+1 end
-   end
-   error("Couldn't find end of string")
-end
-
 function DNS.parse_record (payload)
-   -- Create record depending on type.
-   -- XXX: I'm not sure what's the best way to check a DNS record type.
-   -- Records start with a 'name' field, which in the case of PTR records is a
-   -- string literal ending in '\0'. For all the other records (A, SRV and TXT),
-   -- the 'name' field is an 16-bit identifier. So what I'm doing here is to
-   -- peep the next two bytes after the identifier to read the 'type'.. If the
-   -- 'type' is A, SRV or TXT I consider the skipped two bytes the name. If
-   -- not I read a raw of bytes until '\0' and consider that the name.
-   -- The following two bytes must be PTR.
-   local len, type
+
+   -- Check out if next two bytes are of type TXT.
    local maybe_type = r16(payload + 2)
-   if contains(set{A, SRV, TXT}, maybe_type) then
+   if maybe_type == TXT then
       len = 2
       type = maybe_type
    else
-      len = eos(payload)
+      -- Read out string until find end-of-string character.
+      local ptr = payload
+      local i = 0
+      while true do
+         -- PTR records's name end with an end-of-string character. Next byte belongs to type.
+         if ptr[i] == 0 and ptr[i + 1] == 0 then i = i + 1 break end
+         -- This zero belongs to type so break.
+         if ptr[i] == 0 then break end
+         i = i + 1
+      end
+      len = i
       type = r16(payload + len)
+      if not contains(set{A, SRV, PTR}, type) then
+         return nil, 0
+      end
    end
-   local dns_record = new_dns_record(type)
-   if not dns_record then return nil, 0 end
 
    -- Copy head.
+   local dns_record = new_dns_record(type)
    dns_record.h.name = copy_string(payload, len)
    local ptr = ffi.cast(dns_record_head_info_ptr_t, payload + len)
    dns_record.h.type = ptr.type
@@ -164,7 +159,8 @@ function DNS.parse_record (payload)
       local chunks = {}
       local ptr = payload + offset
       while data_length > 0 do
-         local size = ffi.cast("uint8_t*", ptr)[0]
+         local size = tonumber(ptr[0])
+         if not size or size <= 0 then break end
          table.insert(chunks, copy_string(ptr, size + 1))
          data_length = data_length - size
          ptr = ptr + size + 1
@@ -175,7 +171,6 @@ function DNS.parse_record (payload)
       end
       dns_record.nchunks = #chunks
    end
-
    return dns_record, total_len
 end
 
