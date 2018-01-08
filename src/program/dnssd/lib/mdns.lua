@@ -62,10 +62,11 @@ function MDNS.is_response (pkt)
    return header.flags == STANDARD_QUERY_RESPONSE
 end
 
-local function collect_records (payload, t, n)
+local function collect_records (payload, n)
+   local t = {}
    local rrs, len = DNS.parse_records(payload, n)
    for _, each in ipairs(rrs) do table.insert(t, each) end
-   return payload + len
+   return t, payload + len
 end
 
 function MDNS.parse_packet (pkt)
@@ -79,10 +80,10 @@ function MDNS.parse_packet (pkt)
       authority_rrs = {},
       additional_rrs = {},
    }
-   payload = collect_records(payload, ret.questions, mdns_hdr.questions)
-   payload = collect_records(payload, ret.answer_rrs, mdns_hdr.answer_rrs)
-   payload = collect_records(payload, ret.authority_rrs, mdns_hdr.authority_rrs)
-   payload = collect_records(payload, ret.additional_rrs, mdns_hdr.additional_rrs)
+   ret.questions, payload = collect_records(payload, mdns_hdr.questions)
+   ret.answer_rrs, payload = collect_records(payload, mdns_hdr.answer_rrs)
+   ret.authority_rrs, payload = collect_records(payload, mdns_hdr.authority_rrs)
+   ret.additional_rrs, payload = collect_records(payload, mdns_hdr.additional_rrs)
    return ret
 end
 
