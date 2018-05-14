@@ -1,5 +1,13 @@
 # Change Log
 
+## [3.1.10] - 2018-05-14
+
+* Apply hot-fix to LuaJIT to prevent blacklisted functions from
+  permanently preventing optimization, even after a JIT flush.  For more
+  details, see:
+
+    https://github.com/snabbco/snabb/pull/1244
+
 ## [3.1.9] - 2017-05-18
 
 * Add "snabb --version" command-line argument.
