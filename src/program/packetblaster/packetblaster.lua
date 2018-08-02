@@ -128,12 +128,14 @@ function run_l2fwd (c, patterns, opts)
             g_stats[pciaddr] = {
                TXDGPC = 0,
                GOTCL  = 0,
+               RXNFGPC = 0,
                RXDGPC = 0,
                GORCL  = 0,
             }
          end
          g_stats[pciaddr].TXDGPC = g_stats[pciaddr].TXDGPC + stats.TXDGPC
          g_stats[pciaddr].GOTCL  = g_stats[pciaddr].GOTCL  + stats.GOTCL
+         g_stats[pciaddr].RXNFGPC = g_stats[pciaddr].RXNFGPC + stats.RXNFGPC
          g_stats[pciaddr].RXDGPC = g_stats[pciaddr].RXDGPC + stats.RXDGPC
          g_stats[pciaddr].GORCL  = g_stats[pciaddr].GORCL  + stats.GORCL
          ::continue::
@@ -153,7 +155,7 @@ function run_l2fwd (c, patterns, opts)
       print("Device: "..pciaddr)
       print(("Packets sent: %.4f MPPS (%.4f Gbps)"):format(mpps(stats.TXDGPC),
                                                            gbps(stats.GOTCL)))
-      print(("Packets received: %.4f MPPS (%.4f Gbps)"):format(mpps(stats.RXDGPC),
+      print(("Packets received: %.4f MPPS (%.4f Gbps)"):format(mpps(stats.RXNFGPC),
                                                                gbps(stats.GORCL)))
    end
 

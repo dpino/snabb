@@ -86,6 +86,7 @@ local function reset_stats (r)
    r.TXDGPC:reset()
    r.GOTCL:reset()
    r.RXDGPC:reset()
+   r.RXNFGPC:reset()
    r.GORCL:reset()
 end
 
@@ -95,6 +96,7 @@ function LoadGen:stats ()
       TXDGPC = tonumber(r.TXDGPC()),
       GOTCL  = tonumber(r.GOTCL()),
       RXDGPC = tonumber(r.RXDGPC()),
+      RXNFGPC = tonumber(r.RXNFGPC()),
       GORCL  = tonumber(r.GORCL()),
    }
    reset_stats(r)
