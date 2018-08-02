@@ -131,6 +131,7 @@ function run_l2fwd (c, patterns, opts)
                RXNFGPC = 0,
                RXDGPC = 0,
                GORCL  = 0,
+               QPRDC = 0,
             }
          end
          g_stats[pciaddr].TXDGPC = g_stats[pciaddr].TXDGPC + stats.TXDGPC
@@ -152,11 +153,15 @@ function run_l2fwd (c, patterns, opts)
       local function gbps (bytes)
          return (bytes * 8 / 1e9) / times
       end
+      local function pkt_diff (stats)
+         return lib.comma_value(math.max(stats.TXDGPC - stats.RXNFGPC, 0))
+      end
       print("Device: "..pciaddr)
       print(("Packets sent: %.4f MPPS (%.4f Gbps)"):format(mpps(stats.TXDGPC),
                                                            gbps(stats.GOTCL)))
       print(("Packets received: %.4f MPPS (%.4f Gbps)"):format(mpps(stats.RXNFGPC),
                                                                gbps(stats.GORCL)))
+      print(("Packet difference: %s"):format(pkt_diff(stats)))
    end
 
    local function done ()
