@@ -70,6 +70,107 @@ function run_loadgen (c, patterns, opts)
    else             engine.main() end
 end
 
+local function devices ()
+   pci.scan_devices()
+   return pci.devices
+end
+
+function run_l2fwd (c, patterns, opts)
+   assert(type(opts) == "table")
+
+   local apps = {}
+   local id = 0
+   local devices = devices()
+   for _,device in ipairs(devices) do
+      if is_device_suitable(device, patterns) then
+         id = id + 1
+         local name = "nic"..id
+         local pciaddr = device.pciaddress
+         local info = pci.device_info(pciaddr)
+         config.app(c, name, loadgen(info.driver), pciaddr)
+         config.link(c, "source."..id.."->"..name..".input")
+      end
+   end
+   assert(id > 0, "<PCI> matches no suitable devices.")
+   engine.busywait = true
+   engine.configure(c)
+
+   -- Collect apps.
+   local apps = {}
+   for i=1,id do
+      local app = engine.app_table["nic"..i]
+      table.insert(apps, app)
+   end
+
+   -- Set warming up and duration.
+   local warm_up = 15
+   local threshold = os.time() + warm_up + opts.duration
+
+   io.stdout:write(("Warming up for %d seconds..."):format(warm_up))
+   io.stdout:flush()
+   warm_up = os.time() + warm_up
+
+   -- Global stats.
+   local g_stats = {}
+   local done = false
+   local times = 0
+   local collect_stats = function ()
+      for _, app in ipairs(apps) do
+         local stats = app:stats()
+         if os.time() < warm_up then goto continue end
+         if not done then
+            done = true
+            print("Done")
+            print(("Running for %d seconds"):format(opts.duration))
+         end
+         local pciaddr = app.pciaddress
+         if not g_stats[pciaddr] then
+            g_stats[pciaddr] = {
+               TXDGPC = 0,
+               GOTCL  = 0,
+               RXDGPC = 0,
+               GORCL  = 0,
+            }
+         end
+         g_stats[pciaddr].TXDGPC = g_stats[pciaddr].TXDGPC + stats.TXDGPC
+         g_stats[pciaddr].GOTCL  = g_stats[pciaddr].GOTCL  + stats.GOTCL
+         g_stats[pciaddr].RXDGPC = g_stats[pciaddr].RXDGPC + stats.RXDGPC
+         g_stats[pciaddr].GORCL  = g_stats[pciaddr].GORCL  + stats.GORCL
+         ::continue::
+      end
+      if done then times = times + 1 end
+   end
+   local t = timer.new("collect_stats", collect_stats, 1e9, 'repeating')
+   timer.activate(t)
+
+   local function report (pciaddr, stats)
+      local function mpps (packets)
+         return (packets / 1e6) / times
+      end
+      local function gbps (bytes)
+         return (bytes * 8 / 1e9) / times
+      end
+      print("Device: "..pciaddr)
+      print(("Packets sent: %.4f MPPS (%.4f Gbps)"):format(mpps(stats.TXDGPC),
+                                                           gbps(stats.GOTCL)))
+      print(("Packets received: %.4f MPPS (%.4f Gbps)"):format(mpps(stats.RXDGPC),
+                                                               gbps(stats.GORCL)))
+   end
+
+   local function done ()
+      if threshold <= os.time() then
+         -- Print stats for each device.
+         for pciaddr, stats in pairs(g_stats) do
+            report(pciaddr, stats)
+         end
+         return true
+      end
+   end
+
+   if opts.duration then engine.main({done=done})
+   else             engine.main() end
+end
+
 local function show_usage(exit_code)
    print(require("program.packetblaster.README_inc"))
    main.exit(exit_code)
