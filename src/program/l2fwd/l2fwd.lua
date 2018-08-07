@@ -10,6 +10,7 @@ local long_opts = {
    duration = "D",
    help = "h",
    pciaddr = 1,
+   virtio = 1,
 }
 
 local L2Fwd = {}
@@ -45,6 +46,9 @@ local function parse_args (args)
    function handlers.pciaddr (arg)
       opts.pciaddr = arg
    end
+   function handlers.virtio (arg)
+      opts.virtio = arg
+   end
    function handlers.D (arg)
       opts.duration = assert(tonumber(arg), "Duration must be a number")
    end
@@ -52,25 +56,34 @@ local function parse_args (args)
       usage(0)
    end
    args = lib.dogetopt(args, handlers, "hD:", long_opts)
-   if not opts.pciaddr then usage(1) end
+   if not (opts.pciaddr or opts.virtio) then usage(1) end
    return args, opts
 end
 
 function run (args)
    local args, opts = parse_args(args)
-   local c = config.new()
 
+   local c = config.new()
+   config.app(c, "l2fwd", L2Fwd)
+
+   local device
    if opts.pciaddr then
-      local device = pci.device_info(opts.pciaddr)
-      local driver = require(device.driver).driver
-      config.app(c, "nic", driver, {
+      device = pci.device_info(opts.pciaddr)
+      config.app(c, "nic", require(device.driver).driver, {
          pciaddr = opts.pciaddr
       })
-      config.app(c, "l2fwd", L2Fwd)
-      config.link(c, "nic."..device.tx.." -> l2fwd.input")
-      config.link(c, "l2fwd.output -> nic."..device.rx)
-
-      engine.configure(c)
-      engine.main({duration=opts.duration, report={showlinks=true}})
+   elseif opts.virtio then
+      device = {driver="apps.virtio_net.virtio_net", tx="tx", rx="rx"}
+      config.app(c, "nic", require(device.driver).VirtioNet, {
+         pciaddr = opts.virtio
+      })
+   else
+      error("Unreachable")
    end
+
+   config.link(c, "nic."..device.tx.." -> l2fwd.input")
+   config.link(c, "l2fwd.output -> nic."..device.rx)
+
+   engine.configure(c)
+   engine.main({duration=opts.duration, report={showlinks=true}})
 end
