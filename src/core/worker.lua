@@ -11,6 +11,7 @@ module(..., package.seeall)
 local lib = require("core.lib")
 local shm = require("core.shm")
 local S = require("syscall")
+local fiber = require("lib.fibers.fiber")
 
 --------------------------------------------------------------
 -- Master (parent) process code
@@ -46,10 +47,22 @@ function start (name, luacode)
       local filename = ("/proc/%d/exe"):format(S.getpid())
       local argv = { ("[snabb worker '%s' for %d]"):format(name, S.getppid()) }
       lib.execv(filename, argv)
+
+      -- Capture segv.
+      fiber.spawn(monitor_segv)
    else
       -- Parent process
       children[name] = { pid = pid }
       return pid
+   end
+end
+
+function monitor_segv ()
+   local fd = file.fdopen(assert(S.signalfd('segv')))
+   S.sigprocmask('segv')
+   local buf = ffi.new('uint8_t[128]')
+   while fd:read_some_bytes() > 0 do
+      print('worker segv')
    end
 end
 
