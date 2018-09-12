@@ -12,6 +12,8 @@ local lib = require("core.lib")
 local shm = require("core.shm")
 local S = require("syscall")
 local fiber = require("lib.fibers.fiber")
+local file = require("lib.stream.file")
+local ffi = require("ffi")
 
 --------------------------------------------------------------
 -- Master (parent) process code
@@ -49,20 +51,23 @@ function start (name, luacode)
       lib.execv(filename, argv)
 
       -- Capture segv.
-      fiber.spawn(monitor_segv)
    else
       -- Parent process
       children[name] = { pid = pid }
+      fiber.spawn(monitor_segv)
       return pid
    end
 end
 
 function monitor_segv ()
-   local fd = file.fdopen(assert(S.signalfd('segv')))
+   local fd = file.fdopen(assert(S.signalfd('segv')), 'rdonly')
    S.sigprocmask('segv')
-   local buf = ffi.new('uint8_t[128]')
-   while fd:read_some_bytes() > 0 do
-      print('worker segv')
+   local buf = ffi.new("uint8_t[?]", 128)
+   while true do
+      print('foo')
+      if fd:read_some_bytes(buf, 128) > 0 then
+         print('worker segv')
+      end
    end
 end
 
