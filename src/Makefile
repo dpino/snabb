@@ -64,7 +64,7 @@ snabb: $(LUAOBJ) $(PFLUAOBJ) $(HOBJ) $(COBJ) $(ARCHOBJ) $(ASMOBJ) $(PFLUAASMOBJ)
 	$(E) "LINK      $@"
 	$(Q) $(CC) $(DEBUG) -Wl,--no-as-needed -Wl,-E -Werror -Wall -o $@ $^ \
 	    obj/version_lua.o \
-	    -lrt -lc -ldl -lm -lpthread
+	    -lrt -lc -ldl -lm -lpthread -L $(LINUX_SOURCE_DIR)/tools/lib/bpf/ -lbpf -lelf
 	@echo -n "BINARY    "
 	@ls -sh snabb
 
@@ -135,7 +135,7 @@ $(PFLUAOBJ): obj/%_lua.o: ../lib/pflua/src/%.lua Makefile
 
 $(COBJ): obj/%_c.o: %.c $(CHDR) Makefile | $(OBJDIR)
 	$(E) "C         $@"
-	$(Q) $(CC) $(DEBUG) -O3 -Wl,-E -I ../lib/luajit/src -I . -include $(CURDIR)/../gcc-preinclude.h -c -Wall -Werror -o $@ $<
+	$(Q) $(CC) $(DEBUG) -O3 -Wl,-E -I ../lib/luajit/src -I . -include $(CURDIR)/../gcc-preinclude.h -I$(LINUX_SOURCE_DIR)/usr/include/ -I$(LINUX_SOURCE_DIR)/include/ -I$(LINUX_SOURCE_DIR)/tools/lib/ -I$(LINUX_SOURCE_DIR)/tools/testing/selftests/bpf/ -I$(LINUX_SOURCE_DIR)/tools/perf/ -lpthread -L$(LINUX_SOURCE_DIR)/tools/lib/bpf/ -lbpf -lelf -c  -o $@ $<
 
 obj/arch/avx2_c.o: arch/avx2.c Makefile
 	$(E) "C(AVX2)   $@"
