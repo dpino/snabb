@@ -33,8 +33,7 @@ function AfxdpSocket:new (ifname)
    if not index then error(err) end
 
    local tp = h.htons(c.ETH_P["ALL"])
-   local cifname = ffi.new("char[?]", string.len(ifname), ifname)
-   local sock = C.get_sock(cifname);
+   local sock = C.get_sock(ifname)
    
    local index, err = S.util.if_nametoindex(ifname)
    if not index then
@@ -77,10 +76,10 @@ end
 
 function AfxdpSocket:receive (l)
    local p = self.rx_p
-    local data_info = C.read_sock()
-    local data = data_info.data
-    local sz = data_info.sz
-    local nbp = data_info.numb_packs
+    local data_val = C.read_sock()
+    local data = data_val.data
+    local sz = data_val.sz
+    local nbp = data_val.numb_packs
     if nbp ~= 0 then
       for i=0, nbp-1 do
          ffi.copy(p.data, data[i], sz[i])
