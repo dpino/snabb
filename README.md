@@ -114,8 +114,9 @@ $ export LD_LIBRARY_PATH="$LINUX_SOURCE_DIR/tools/lib/bpf/"
 
 Set up the Snabb development environment:
 ```
-$ git clone https://github.com/SnabbCo/snabb
+$ git clone https://github.com/djkonro/snabb.git
 $ cd snabb
+$ git checkout -b AfxdpSock 
 $ make -j
 ```
 
