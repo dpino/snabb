@@ -33,7 +33,8 @@ function AfxdpSocket:new (ifname)
    if not index then error(err) end
 
    local tp = h.htons(c.ETH_P["ALL"])
-   local sock = C.get_sock(ifname)
+   local cifname = ffi.new("char[?]", #ifname, ifname)
+   local sock = C.get_sock(cifname)
    
    local index, err = S.util.if_nametoindex(ifname)
    if not index then
