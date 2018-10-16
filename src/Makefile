@@ -6,6 +6,25 @@ E= @echo
 
 export TEST_SKIPPED=43
 CC ?= gcc
+LLC ?= llc
+CLANG ?= clang
+
+XDPSRCDIR = apps/socket/af_xdp/
+XDPOBJDIR = obj/apps/socket/af_xdp/
+
+KERNEL ?= /lib/modules/$(shell uname -r)/build/
+
+CFLAGS ?= -I lib/kernel_include/tools
+CFLAGS += -I lib/kernel_include/tools/include
+CFLAGS += -I lib/kernel_include/tools/lib
+CFLAGS += -I lib/kernel_include/tools/perf
+
+CFLAGS_LIBBPF ?= -I$(KERNEL)/tools/include
+CFLAGS_LIBBPF += -I$(KERNEL)/tools/perf
+CFLAGS_LIBBPF += -I$(KERNEL)/usr/include
+CFLAGS_LIBBPF += -I$(KERNEL)/arch/x86/include
+CFLAGS_LIBBPF += -I lib/kernel_include/tools/perf
+
 
 SRCDIR = $(shell find . -type d -not -regex './obj.*' -printf '%P ')
 OBJDIR = $(patsubst %,obj/%,$(SRCDIR))
@@ -59,12 +78,14 @@ PATH := ../lib/luajit/usr/local/bin:$(PATH)
 snabb: $(LUAOBJ) $(PFLUAOBJ) $(HOBJ) $(COBJ) $(ARCHOBJ) $(ASMOBJ) $(PFLUAASMOBJ) $(INCOBJ) $(YANGOBJ) $(LUAJIT_A)
 	$(E) "GEN       obj/version.lua.gen"
 	$(Q) ../generate-version-lua.sh > obj/version.lua.gen
+	$(E) "GEN       obj/apps/socket/af_xdp/xdpsock_user_kern.o"
+	$(Q) $(CLANG) -c $(XDPSRCDIR)/xdpsock_kern.c $(CFLAGS) $(CFLAGS_LIBBPF) -D__KERNEL__ -D__BPF_TRACING__ -Wno-unused-value -Wno-pointer-sign  -Wno-compare-distinct-pointer-types -Wno-gnu-variable-sized-type-not-at-end -Wno-address-of-packed-member -Wno-tautological-compare   -Wno-unknown-warning-option  -O2 -emit-llvm -c -o -| llc -march=bpf -filetype=obj  -o $(XDPOBJDIR)/xdpsock_user_kern.o	
 	$(E) "LUA       obj/version.lua"
 	$(Q) luajit -bg -n core.version obj/version.lua.gen obj/version_lua.o
 	$(E) "LINK      $@"
-	$(Q) $(CC) $(DEBUG) -Wl,--no-as-needed -Wl,-E -Werror -Wall -o $@ $^ \
+	$(Q) $(CC) $(DEBUG) $(CFLAGS)  $(CFLAGS_LIBBPF) $(LDFLAGS) -Wl,--no-as-needed -Wl,-E -Werror -Wall -o $@ $^ \
 	    obj/version_lua.o \
-	    -lrt -lc -ldl -lm -lpthread -L $(LINUX_SOURCE_DIR)/tools/lib/bpf/ -lbpf -lelf
+	    -lrt -lc -ldl -lm -lpthread -lelf
 	@echo -n "BINARY    "
 	@ls -sh snabb
 
@@ -135,7 +156,7 @@ $(PFLUAOBJ): obj/%_lua.o: ../lib/pflua/src/%.lua Makefile
 
 $(COBJ): obj/%_c.o: %.c $(CHDR) Makefile | $(OBJDIR)
 	$(E) "C         $@"
-	$(Q) $(CC) $(DEBUG) -O3 -Wl,-E -I ../lib/luajit/src -I . -include $(CURDIR)/../gcc-preinclude.h -I$(LINUX_SOURCE_DIR)/usr/include/ -I$(LINUX_SOURCE_DIR)/tools/lib/ -I$(LINUX_SOURCE_DIR)/tools/testing/selftests/bpf/ -I$(LINUX_SOURCE_DIR)/tools/perf/ -lpthread -L$(LINUX_SOURCE_DIR)/tools/lib/bpf/ -lbpf -lelf -c  -o $@ $<
+	$(Q) $(CC) $(DEBUG) -O3 -Wl,-E -I ../lib/luajit/src -I . -include $(CURDIR)/../gcc-preinclude.h $(CFLAGS)  $(CFLAGS_LIBBPF) -lpthread -lelf -c  -o $@ $<
 
 obj/arch/avx2_c.o: arch/avx2.c Makefile
 	$(E) "C(AVX2)   $@"

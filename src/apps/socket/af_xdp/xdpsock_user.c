@@ -26,8 +26,7 @@
 #include <sys/types.h>
 #include <poll.h>
 
-#include "bpf/libbpf.h"
-#include "bpf_util.h"
+#include <bpf/libbpf.h>
 #include <bpf/bpf.h>
 
 #include "xdp_sock.h"
@@ -56,7 +55,7 @@
 
 #define DEBUG_HEXDUMP 1
 
-typedef __u64 u64;
+//typedef __u64 u64;
 typedef __u32 u32;
 
 static u32 opt_xdp_flags;
@@ -554,13 +553,13 @@ int get_sock(char *iface){
 	int i, ret, key = 0;
 	pthread_t pt;
 
-    opt_ifindex = if_nametoindex(iface);
+	opt_ifindex = if_nametoindex(iface);
 	if (!opt_ifindex) {
 		fprintf(stderr, "ERROR: interface \"%s\" does not exist\n",
 			iface);
 	}
 
-    snprintf(xdp_filename, sizeof(xdp_filename), "obj/apps/socket/af_xdp/xdpsock_user_kern.o");
+	snprintf(xdp_filename, sizeof(xdp_filename), "obj/apps/socket/af_xdp/xdpsock_user_kern.o");
 	prog_load_attr.file = xdp_filename;
 
 	if (bpf_prog_load_xattr(&prog_load_attr, &obj, &prog_fd))
