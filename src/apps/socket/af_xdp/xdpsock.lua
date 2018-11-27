@@ -63,7 +63,6 @@ function AfxdpSocket:pull ()
       limit = limit - 1
       self:receive(l)
    end
-    C.close_sock()
 end
 
 function AfxdpSocket:can_receive ()
@@ -114,7 +113,6 @@ function AfxdpSocket:push ()
       end
       packet.free(p)
    end
-   C.close_sock()
 end
 
 function AfxdpSocket:can_transmit ()
@@ -132,7 +130,7 @@ function AfxdpSocket:transmit (p)
 end
 
 function AfxdpSocket:stop()
-   self.sock:close()
+   C.close_sock()
    packet.free(self.rx_p)
 end
 

@@ -131,6 +131,38 @@ struct xdpsock *xsk_pt;
 #define u_smp_wmb() barrier()
 #endif
 
+static void hex_dump(void *pkt, size_t length, u64 addr)
+{
+	const unsigned char *address = (unsigned char *)pkt;
+	const unsigned char *line = address;
+	size_t line_size = 32;
+	unsigned char c;
+	char buf[32];
+	int i = 0;
+
+	sprintf(buf, "addr=%lu", addr);
+	printf("length = %zu\n", length);
+	printf("%s | ", buf);
+	while (length-- > 0) {
+		printf("%02X ", *address++);
+		if (!(++i % line_size) || (length == 0 && i % line_size)) {
+			if (length == 0) {
+				while (i++ % line_size)
+					printf("__ ");
+			}
+			printf(" | ");	/* right close */
+			while (line < address) {
+				c = *line++;
+				printf("%c", (c < 33 || c == 255) ? 0x2E : c);
+			}
+			printf("\n");
+			if (length > 0)
+				printf("%s | ", buf);
+		}
+	}
+	printf("\n");
+}
+
 static inline u32 umem_nb_free(struct xdp_umem_uqueue *q, u32 nb)
 {
 	u32 free_entries = q->cached_cons - q->cached_prod;
@@ -459,6 +491,8 @@ static inline int xq_enq_tx_only(struct xdpsock *xsk, struct xdp_uqueue *uq,
 
 		char *pkt = xq_get_data(xsk, r[idx].addr);
 		memcpy(pkt, data, len);
+		printf("Writing = %d\n", pkt);
+		hex_dump(pkt, r[idx].len, r[idx].addr);
 	}
 
 	u_smp_wmb();
@@ -487,13 +521,11 @@ int write_sock(int fd, char *pkt, int l)
 	return l;
 }
 
-
 struct data_val* read_sock()
 {
 	struct xdp_desc descs[BATCH_SIZE];
 	struct data_val* dval = malloc(sizeof(struct data_val));
 	unsigned int rcvd, i;
-
 	struct xdpsock *xsk = xsk_pt;
 
 	dval->numb_packs = 0;
@@ -507,6 +539,8 @@ struct data_val* read_sock()
 	dval->numb_packs = rcvd;
 	for (i = 0; i < rcvd; i++) {
 		char *pkt = xq_get_data(xsk, descs[i].addr);
+		printf("Reading = %d\n", pkt);
+		hex_dump(pkt, descs[i].len, descs[i].addr);
 		dval->data[i] = malloc(descs[i].len * sizeof(char));
 		memcpy(dval->data[i], pkt, descs[i].len);
 		dval->sz[i] = descs[i].len;
@@ -515,9 +549,8 @@ struct data_val* read_sock()
 	xsk->rx_npkts += rcvd;
 	umem_fill_to_kernel_ex(&xsk->umem->fq, descs, rcvd);
 
-	return dval;
+    return dval;
 }
-
 
 int get_sock(char *iface){
 
