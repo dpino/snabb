@@ -104,9 +104,9 @@ struct xdpsock {
 };
 
 struct data_val {
-    char **data;
-    int *sz;
-    int numb_packs;
+	char **data;
+	int *sz;
+	int numb_packs;
 };
 
 struct xdpsock *xsk_pt;
@@ -203,7 +203,7 @@ static inline int umem_fill_to_kernel_ex(struct xdp_umem_uqueue *fq,
 }
 
 static inline int umem_fill_to_kernel(struct xdp_umem_uqueue *fq, u64 *d,
-				      size_t nb)
+					  size_t nb)
 {
 	u32 i;
 
@@ -224,7 +224,7 @@ static inline int umem_fill_to_kernel(struct xdp_umem_uqueue *fq, u64 *d,
 }
 
 static inline size_t umem_complete_from_kernel(struct xdp_umem_uqueue *cq,
-					       u64 *d, size_t nb)
+						   u64 *d, size_t nb)
 {
 	u32 idx, i, entries = umem_nb_avail(cq, nb);
 
@@ -247,29 +247,6 @@ static inline size_t umem_complete_from_kernel(struct xdp_umem_uqueue *cq,
 static inline void *xq_get_data(struct xdpsock *xsk, u64 addr)
 {
 	return &xsk->umem->frames[addr];
-}
-
-static inline int xq_enq(struct xdp_uqueue *uq,
-			 const struct xdp_desc *descs,
-			 unsigned int ndescs)
-{
-	struct xdp_desc *r = uq->ring;
-	unsigned int i;
-
-	if (xq_nb_free(uq, ndescs) < ndescs)
-		return -ENOSPC;
-
-	for (i = 0; i < ndescs; i++) {
-		u32 idx = uq->cached_prod++ & uq->mask;
-
-		r[idx].addr = descs[i].addr;
-		r[idx].len = descs[i].len;
-	}
-
-	u_smp_wmb();
-
-	*uq->producer = uq->cached_prod;
-	return 0;
 }
 
 static inline int xq_deq(struct xdp_uqueue *uq,
@@ -311,7 +288,7 @@ static struct xdp_umem *xdp_umem_configure(int sfd)
 	lassert(umem);
 
 	lassert(posix_memalign(&bufs, getpagesize(), /* PAGE_SIZE aligned */
-			       NUM_FRAMES * FRAME_SIZE) == 0);
+				   NUM_FRAMES * FRAME_SIZE) == 0);
 
 	mr.addr = (__u64)bufs;
 	mr.len = NUM_FRAMES * FRAME_SIZE;
@@ -329,10 +306,10 @@ static struct xdp_umem *xdp_umem_configure(int sfd)
 			   &optlen) == 0);
 
 	umem->fq.map = mmap(0, off.fr.desc +
-			    FQ_NUM_DESCS * sizeof(u64),
-			    PROT_READ | PROT_WRITE,
-			    MAP_SHARED | MAP_POPULATE, sfd,
-			    XDP_UMEM_PGOFF_FILL_RING);
+				FQ_NUM_DESCS * sizeof(u64),
+				PROT_READ | PROT_WRITE,
+				MAP_SHARED | MAP_POPULATE, sfd,
+				XDP_UMEM_PGOFF_FILL_RING);
 	lassert(umem->fq.map != MAP_FAILED);
 
 	umem->fq.mask = FQ_NUM_DESCS - 1;
@@ -343,10 +320,10 @@ static struct xdp_umem *xdp_umem_configure(int sfd)
 	umem->fq.cached_cons = FQ_NUM_DESCS;
 
 	umem->cq.map = mmap(0, off.cr.desc +
-			     CQ_NUM_DESCS * sizeof(u64),
-			     PROT_READ | PROT_WRITE,
-			     MAP_SHARED | MAP_POPULATE, sfd,
-			     XDP_UMEM_PGOFF_COMPLETION_RING);
+				 CQ_NUM_DESCS * sizeof(u64),
+				 PROT_READ | PROT_WRITE,
+				 MAP_SHARED | MAP_POPULATE, sfd,
+				 XDP_UMEM_PGOFF_COMPLETION_RING);
 	lassert(umem->cq.map != MAP_FAILED);
 
 	umem->cq.mask = CQ_NUM_DESCS - 1;
@@ -480,8 +457,8 @@ static inline int xq_enq_tx_only(struct xdpsock *xsk, struct xdp_uqueue *uq,
 		r[idx].addr	= (id + i) << FRAME_SHIFT;
 		r[idx].len	= len;
 
-        char *pkt = xq_get_data(xsk, r[idx].addr);
-        memcpy(pkt, data, len);
+		char *pkt = xq_get_data(xsk, r[idx].addr);
+		memcpy(pkt, data, len);
 	}
 
 	u_smp_wmb();
@@ -492,52 +469,53 @@ static inline int xq_enq_tx_only(struct xdpsock *xsk, struct xdp_uqueue *uq,
 
 int write_sock(int fd, char *pkt, int l)
 {
-	unsigned int idx = 0;
-    struct xdp_desc descs[BATCH_SIZE];
-    struct xdpsock *xsk = xsk_pt;
+	static unsigned int idx = NUM_DESCS;
+	struct xdpsock *xsk = xsk_pt;
 
 	if (xq_nb_free(&xsk->tx, BATCH_SIZE) >= BATCH_SIZE) {
 		lassert(xq_enq_tx_only(xsk, &xsk->tx, idx, BATCH_SIZE, pkt, l) == 0);
 		xsk->outstanding_tx += BATCH_SIZE;
 		idx += BATCH_SIZE;
 		idx %= NUM_FRAMES;
+		if (idx == 0) {
+			idx = NUM_DESCS;
+		}
 	}
 
-        complete_tx_only(xsk); 
+		complete_tx_only(xsk);
 
-    return l;
+	return l;
 }
 
 
 struct data_val* read_sock()
 {
 	struct xdp_desc descs[BATCH_SIZE];
-    struct data_val* dval = malloc(sizeof(struct data_val));
+	struct data_val* dval = malloc(sizeof(struct data_val));
 	unsigned int rcvd, i;
-    
-    struct xdpsock *xsk = xsk_pt;
 
-    dval->numb_packs = 0;
+	struct xdpsock *xsk = xsk_pt;
+
+	dval->numb_packs = 0;
 	rcvd = xq_deq(&xsk->rx, descs, BATCH_SIZE);
 	if (!rcvd){ 
 		return dval;
-    }
+	}
 
-    dval->data = malloc(rcvd * sizeof(char*));
-    dval->sz = malloc(rcvd * sizeof(int));
-    dval->numb_packs = rcvd;
+	dval->data = malloc(rcvd * sizeof(char*));
+	dval->sz = malloc(rcvd * sizeof(int));
+	dval->numb_packs = rcvd;
 	for (i = 0; i < rcvd; i++) {
 		char *pkt = xq_get_data(xsk, descs[i].addr);
-        dval->data[i] = malloc(descs[i].len * sizeof(char));
-        memcpy(dval->data[i], pkt, descs[i].len);
-        dval->sz[i] = descs[i].len;
-        
+		dval->data[i] = malloc(descs[i].len * sizeof(char));
+		memcpy(dval->data[i], pkt, descs[i].len);
+		dval->sz[i] = descs[i].len;
 	}
 
 	xsk->rx_npkts += rcvd;
 	umem_fill_to_kernel_ex(&xsk->umem->fq, descs, rcvd);
 
-    return dval;
+	return dval;
 }
 
 
