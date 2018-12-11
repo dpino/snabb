@@ -56,8 +56,8 @@ function IngressDropMonitor:sample ()
 end
 
 function IngressDropMonitor:jit_flush_if_needed ()
-   if self.current_value[0] - self.last_value[0] < self.threshold then return end
    if now() - self.last_flush < self.wait then return end
+   if self.current_value[0] - self.last_value[0] < self.threshold then return end
    self.last_flush = now()
    self.last_value[0] = self.current_value[0]
    --- TODO: Change last_flush, last_value and current_value fields to be counters.
