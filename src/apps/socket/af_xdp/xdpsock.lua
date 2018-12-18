@@ -3,17 +3,12 @@
 module(..., package.seeall)
 
 local S = require("syscall")
-local h = require("syscall.helpers")
-local bit = require("bit")
 local link = require("core.link")
 local packet = require("core.packet")
 local counter = require("core.counter")
 local ethernet = require("lib.protocol.ethernet")
 local ffi = require("ffi")
 local C = ffi.C
-local n  = 10
-
-local c, t = S.c, S.types.t
 
 require("apps.socket.af_xdp.xdp_sock_h")
 
@@ -27,20 +22,13 @@ typedef struct data_val {
 
 AfxdpSocket = {}
 
-function AfxdpSocket:new (ifname)
+function AfxdpSocket.new (ifname)
    assert(ifname)
    local index, err = S.util.if_nametoindex(ifname)
    if not index then error(err) end
 
-   local tp = h.htons(c.ETH_P["ALL"])
    local cifname = ffi.new("char[?]", #ifname, ifname)
    local sock = C.get_sock(cifname)
-   
-   local index, err = S.util.if_nametoindex(ifname)
-   if not index then
-      error(err)
-   end
-
 
    return setmetatable({sock = sock,
                         rx_p = packet.allocate(),
@@ -138,7 +126,6 @@ function selftest ()
    -- Send a packet over the loopback device and check
    -- that it is received correctly.
    local datagram = require("lib.protocol.datagram")
-   local ethernet = require("lib.protocol.ethernet")
    local ipv6 = require("lib.protocol.ipv6")
    local Match = require("apps.test.match").Match
 
