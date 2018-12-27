@@ -36,6 +36,12 @@ function RawSocket:new (ifname)
       error(err)
    end
    return setmetatable({sock = sock,
+                        pollfds_in = S.types.t.pollfds({
+                           {fd=sock, events="in"}
+                        }),
+                        pollfds_out = S.types.t.pollfds({
+                           {fd=sock, events="out"}
+                        }),
                         rx_p = packet.allocate(),
                         shm  = { rxbytes   = {counter},
                                  rxpackets = {counter},
@@ -58,13 +64,14 @@ function RawSocket:pull ()
    end
 end
 
+
 function RawSocket:can_receive ()
-   local t, err = S.select({readfds = {self.sock}}, 0)
+   local t, err = S.poll(self.pollfds_in, 0)
    while not t and (err.AGAIN or err.INTR) do
-      t, err = S.select({readfds = {self.sock}}, 0)
+      t, err = S.poll(self.pollfds_in, 0)
    end
    assert(t, err)
-   return t.count == 1
+   return t == 1
 end
 
 function RawSocket:receive ()
@@ -101,12 +108,12 @@ function RawSocket:push ()
 end
 
 function RawSocket:can_transmit ()
-   local t, err = S.select({writefds = {self.sock}}, 0)
+   local t, err = S.poll(self.pollfds_out, 0)
    while not t and (err.AGAIN or err.INTR) do
-      t, err = S.select({writefds = {self.sock}}, 0)
+      t, err = S.poll(self.pollfds_out, 0)
    end
    assert(t, err)
-   return t.count == 1
+   return t == 1
 end
 
 function RawSocket:transmit (p)
