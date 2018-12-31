@@ -56,15 +56,32 @@ TESTSCRIPTS = $(shell find . -name "selftest.*" -executable | xargs)
 
 PATH := ../lib/luajit/usr/local/bin:$(PATH)
 
+LINUX_SOURCE_DIR=/home/dpino/workspace/linux
+
+XDPSRCDIR = apps/socket/xdp
+XDPOBJDIR = obj/apps/socket/xdp
+CLANG = clang
+LLC = llc
+
 snabb: $(LUAOBJ) $(PFLUAOBJ) $(HOBJ) $(COBJ) $(ARCHOBJ) $(ASMOBJ) $(PFLUAASMOBJ) $(INCOBJ) $(YANGOBJ) $(LUAJIT_A)
 	$(E) "GEN       obj/version.lua.gen"
 	$(Q) ../generate-version-lua.sh > obj/version.lua.gen
 	$(E) "LUA       obj/version.lua"
 	$(Q) luajit -bg -n core.version obj/version.lua.gen obj/version_lua.o
+	$(E) "GEN       obj/apps/socket/xdp/xdpsock_kern.o"
+	$(Q) $(CLANG) -c $(XDPSRCDIR)/xdpsock_kern.c \
+		-D__KERNEL__ -D__BPF_TRACING__ \
+		-I ${LINUX_SOURCE_DIR}/tools/include \
+		-I ${LINUX_SOURCE_DIR}/tools/testing/selftests/bpf \
+		-Wno-unused-value -Wno-pointer-sign -Wno-compare-distinct-pointer-types \
+		-Wno-gnu-variable-sized-type-not-at-end -Wno-address-of-packed-member \
+		-Wno-tautological-compare -Wno-unknown-warning-option \
+		-O2 -emit-llvm -c -o - | $(LLC) -march=bpf -filetype=obj -o $(XDPOBJDIR)/xdpsock_kern.o
 	$(E) "LINK      $@"
 	$(Q) $(CC) $(DEBUG) -Wl,--no-as-needed -Wl,-E -Werror -Wall -o $@ $^ \
 	    obj/version_lua.o \
-	    -lrt -lc -ldl -lm -lpthread
+	    ${LINUX_SOURCE_DIR}/tools/lib/bpf/libbpf.a \
+	    -lrt -lc -ldl -lm -lpthread -lelf
 	@echo -n "BINARY    "
 	@ls -sh snabb
 
@@ -135,7 +152,16 @@ $(PFLUAOBJ): obj/%_lua.o: ../lib/pflua/src/%.lua Makefile
 
 $(COBJ): obj/%_c.o: %.c $(CHDR) Makefile | $(OBJDIR)
 	$(E) "C         $@"
-	$(Q) $(CC) $(DEBUG) -O3 -Wl,-E -I ../lib/luajit/src -I . -include $(CURDIR)/../gcc-preinclude.h -c -Wall -Werror -o $@ $<
+	$(Q) $(CC) $(DEBUG) -O3 -Wl,-E \
+		-I ../lib/luajit/src \
+		-I . \
+		-I ${LINUX_SOURCE_DIR}/tools/lib \
+		-I ${LINUX_SOURCE_DIR}/tools/include \
+		-I ${LINUX_SOURCE_DIR}/tools/testing/selftests/bpf \
+		-I ${LINUX_SOURCE_DIR}/usr/include \
+		-include $(CURDIR)/../gcc-preinclude.h \
+		-c -Wall -Wno-unused-variable -Werror \
+		-o $@ $<
 
 obj/arch/avx2_c.o: arch/avx2.c Makefile
 	$(E) "C(AVX2)   $@"
