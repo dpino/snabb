@@ -23,6 +23,8 @@ function run (args)
       intel1g(unpack(args))
    elseif command == 'rawsocket' and #args ~= 3 then
       rawsocket(unpack(args))
+   elseif command == 'xdpsocket' and #args ~= 3 then
+      xdpsocket(unpack(args))
    elseif command == 'esp' and #args >= 2 then
       esp(unpack(args))
    elseif command == 'hash' and #args <= 1 then
@@ -376,14 +378,15 @@ local function socket (driver, npackets, packet_size, timeout)
 
    local start = C.get_monotonic_time()
    timer.activate(timer.new("null", function () end, 1e6, 'repeating'))
+   local txpackets = 0
    local n, n_max = 0, timeout and timeout * 100
-   while link.stats(engine.app_table.source.output.tx).txpackets < npackets and n < n_max do
+   while txpackets < npackets and n < n_max do
+      txpackets = txpackets + link.stats(engine.app_table.source.output.tx).txpackets
       engine.main({duration = 0.01, no_report = true})
       n = n + 1
    end
    local finish = C.get_monotonic_time()
    local runtime = finish - start
-   local txpackets = link.stats(engine.app_table.source.output.tx).txpackets
    local rxpackets = link.stats(engine.app_table.sink.input.rx).rxpackets
    engine.report()
    print()
@@ -393,7 +396,6 @@ local function socket (driver, npackets, packet_size, timeout)
       ((txpackets * packet_size * 8) / runtime) / (1024*1024*1024),
       (txpackets - rxpackets) *100 / txpackets
    ))
-   local txpackets = link.stats(engine.app_table.source.output.tx).txpackets
    if txpackets < npackets then
       print(("Packets lost. Rx: %d. Lost: %d"):format(txpackets, npackets - txpackets))
       main.exit(1)
@@ -402,13 +404,17 @@ end
 
 function rawsocket (npackets, packet_size, timeout)
    local driver = require("apps.socket.raw").RawSocket
-   npackets = tonumber(npackets) or 1023
+   npackets = tonumber(npackets) or 10e3
    packet_size = tonumber(packet_size) or 550
    timeout = tonumber(timeout) or 1000
+   return socket(driver, npackets, packet_size, timeout)
+end
 
-   -- FIXME: When npackets >= 1024, the app gets frozen and returns a segfault.
-   assert(npackets <= 1023, "Number of packets cannot exceed 1023")
-
+function xdpsocket (npackets, packet_size, timeout)
+   local driver = require("apps.socket.xdp.xdp").XDPSocket
+   npackets = tonumber(npackets) or 10e3
+   packet_size = tonumber(packet_size) or 550
+   timeout = tonumber(timeout) or 1000
    return socket(driver, npackets, packet_size, timeout)
 end
 
