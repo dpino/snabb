@@ -21,6 +21,8 @@ function run (args)
       solarflare(unpack(args))
    elseif command == 'intel1g' and #args >= 2 and #args <= 3 then
       intel1g(unpack(args))
+   elseif command == 'rawsocket' and #args ~= 3 then
+      rawsocket(unpack(args))
    elseif command == 'esp' and #args >= 2 then
       esp(unpack(args))
    elseif command == 'hash' and #args <= 1 then
@@ -333,6 +335,81 @@ receive_device.interface= "rx1GE"
       print("Packets lost. Test failed!")
       main.exit(1)
    end
+end
+
+local function socket (driver, npackets, packet_size, timeout)
+   print(("Packets: %d; Packet Size: %d; Timeout: %d"):format(npackets, packet_size, timeout))
+
+   local ifname0 = lib.getenv("SNABB_PCI0")
+   if not ifname0 then
+      print("SNABB_PCI0 not set.")
+      os.exit(engine.test_skipped_code)
+   end
+   local ifname1 = lib.getenv("SNABB_PCI1")
+   if not ifname1 then
+      print("SNABB_PCI1 not set.")
+      os.exit(engine.test_skipped_code)
+   end
+
+   -- Topology:
+   -- Source -> Socket NIC#1 => Socket NIC#2 -> Sink
+
+   local c = config.new()
+
+   config.app(c, "source", Source)
+   config.app(c, ifname0, driver, ifname0)
+   config.app(c, ifname1, driver, ifname1)
+   config.app(c, "sink", basic_apps.Sink)
+
+   config.link(c, "source.tx -> " .. ifname0 .. ".input")
+   config.link(c, ifname1 .. ".output -> sink.rx")
+
+   engine.configure(c)
+
+   print(("Sending through %s, receiving through %s"):format(ifname0, ifname1))
+
+   engine.app_table.source:set_packet_addresses(ethernet:pton("02:00:00:00:00:01"),
+   ethernet:pton("02:00:00:00:00:02"))
+   engine.app_table.source:set_packet_size(packet_size)
+
+   engine.Hz = false
+
+   local start = C.get_monotonic_time()
+   timer.activate(timer.new("null", function () end, 1e6, 'repeating'))
+   local n, n_max = 0, timeout and timeout * 100
+   while link.stats(engine.app_table.source.output.tx).txpackets < npackets and n < n_max do
+      engine.main({duration = 0.01, no_report = true})
+      n = n + 1
+   end
+   local finish = C.get_monotonic_time()
+   local runtime = finish - start
+   local txpackets = link.stats(engine.app_table.source.output.tx).txpackets
+   local rxpackets = link.stats(engine.app_table.sink.input.rx).rxpackets
+   engine.report()
+   print()
+   print(("Processed %.1f million packets in %.2f seconds (rate: %.1f Mpps, %.2f Gbit/s, %.2f %% packet loss)."):format(
+      txpackets / 1e6, runtime,
+      txpackets / runtime / 1e6,
+      ((txpackets * packet_size * 8) / runtime) / (1024*1024*1024),
+      (txpackets - rxpackets) *100 / txpackets
+   ))
+   local txpackets = link.stats(engine.app_table.source.output.tx).txpackets
+   if txpackets < npackets then
+      print(("Packets lost. Rx: %d. Lost: %d"):format(txpackets, npackets - txpackets))
+      main.exit(1)
+   end
+end
+
+function rawsocket (npackets, packet_size, timeout)
+   local driver = require("apps.socket.raw").RawSocket
+   npackets = tonumber(npackets) or 1023
+   packet_size = tonumber(packet_size) or 550
+   timeout = tonumber(timeout) or 1000
+
+   -- FIXME: When npackets >= 1024, the app gets frozen and returns a segfault.
+   assert(npackets <= 1023, "Number of packets cannot exceed 1023")
+
+   return socket(driver, npackets, packet_size, timeout)
 end
 
 function esp (npackets, packet_size, mode, direction, profile)
