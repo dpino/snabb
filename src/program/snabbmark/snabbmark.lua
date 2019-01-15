@@ -21,6 +21,8 @@ function run (args)
       solarflare(unpack(args))
    elseif command == 'intel1g' and #args >= 2 and #args <= 3 then
       intel1g(unpack(args))
+   elseif command == 'intel10g' and #args >= 2 and #args <= 3 then
+      intel10g(unpack(args))
    elseif command == 'rawsocket' and #args ~= 3 then
       rawsocket(unpack(args))
    elseif command == 'xdpsocket' and #args ~= 3 then
@@ -333,6 +335,114 @@ receive_device.interface= "rx1GE"
     ((txpackets * packet_size * 8) / runtime) / (1024*1024*1024),
     (txpackets - rxpackets) *100 / txpackets
    ))
+   if link.stats(engine.app_table.source.output.tx).txpackets < npackets then
+      print("Packets lost. Test failed!")
+      main.exit(1)
+   end
+end
+
+local function w (...) io.stdout:write(...) end
+local function wln (...) w(...) w("\n") end
+local function skip (...)
+   wln(...)
+   os.exit(engine.test_skipped_code)
+end
+local function device_info (pciaddr)
+   pciaddr = assert(tostring(pciaddr), "Invalid pciaddr: "..pciaddr)
+   local device = pciaddr and pci.device_info(pciaddr)
+   if not (device or device.driver == 'apps.intel_mp.intel_mp') then
+      print("SNABB_PCI[0|1] not set, or not suitable Intel 10G.")
+      os.exit(engine.test_skipped_code)
+   end
+   return device
+end
+
+function intel10g (npackets, packet_size, timeout)
+   local function load_driver ()
+      return require("apps.intel_mp.intel_mp").Intel
+   end
+   local function stats (runtime, txpackets, rxpackets, packet_size)
+      local processed = txpackets / 1e6
+      local rate = txpackets / runtime / 1e6
+      local mpps = ((txpackets * packet_size * 8) / runtime) / (1024*1024*1024)
+      print()
+      print(("Processed %.1f million packets in %.2f seconds "..
+             "(rate: %.1f Mpps, %.2f Gbit/s)"):format(processed,
+                                                      runtime,
+                                                      rate,
+                                                      mpps))
+   end
+
+   local pciaddr0 = lib.getenv("SNABB_PCI0")
+   if not pciaddr0 then
+      skip("SNABB_PCI0 not set")
+   end
+   local pciaddr1 = lib.getenv("SNABB_PCI1")
+   if not pciaddr1 then
+      skip("SNABB_PCI1 not set")
+   end
+   local status, Intel10gNic = pcall(load_driver)
+   if not status then
+      skip("Could not find driver: "..Intel10gNic)
+   end
+
+   npackets = tonumber(npackets) or error("Invalid number of packets: " .. npackets)
+   packet_size = tonumber(packet_size) or error("Invalid packet size: " .. packet_size)
+   if timeout then
+      timeout = tonumber(timeout) or error("Invalid timeout: " .. timeout)
+   end
+
+   local nic0 = device_info(pciaddr0)
+   local nic1 = device_info(pciaddr1)
+
+   nic0.interface = "nic0"
+   nic1.interface = "nic1"
+
+   w(("Sending through %s (%s); "):format(nic0.interface,
+                                          nic0.pciaddress))
+   wln(("Receiving through %s (%s)"):format(nic1.interface,
+                                            nic1.pciaddress))
+
+   -- Topology:
+   -- Source -> Intel10g NIC#1 => Intel10g NIC#2 -> Sink
+
+   -- Initialize apps.
+   local c = config.new()
+   config.app(c, "source", basic_apps.Source, packet_size)
+   config.app(c, "tee", basic_apps.Tee)
+   config.app(c, "sink", basic_apps.Sink)
+   config.app(c, nic0.interface, Intel10gNic, {
+      pciaddr = pciaddr0,
+   })
+   config.app(c, nic1.interface, Intel10gNic, {
+      pciaddr = pciaddr1,
+   })
+   config.app(c, "sink", basic_apps.Sink)
+
+   -- Set links.
+   config.link(c, "source.tx -> tee.rx")
+   config.link(c, "tee.tx -> "..nic0.interface.."."..nic0.rx)
+   config.link(c, nic1.interface.."."..nic1.tx.." -> sink.rx")
+
+   -- Set engine.
+   engine.configure(c)
+   engine.Hz = false
+
+   local start = C.get_monotonic_time()
+   timer.activate(timer.new("null", function () end, 1e6, 'repeating'))
+   while link.stats(engine.app_table.source.output.tx).txpackets < npackets do
+      engine.main({duration = 0.01, no_report = true})
+   end
+   local finish = C.get_monotonic_time()
+   local runtime = finish - start
+   local txpackets = link.stats(engine.app_table.source.output.tx).txpackets
+   local rxpackets = link.stats(engine.app_table.sink.input.rx).rxpackets
+
+   local packets = link.stats(engine.app_table.source.output.tx).txpackets
+   engine.report()
+
+   stats(runtime, txpackets, rxpackets, packet_size)
+
    if link.stats(engine.app_table.source.output.tx).txpackets < npackets then
       print("Packets lost. Test failed!")
       main.exit(1)
