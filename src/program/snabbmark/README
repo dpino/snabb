@@ -50,3 +50,9 @@ Usage:
 
   snabbmark ctable
     Benchmark insertion and lookup for the "ctable" data structure.
+
+  snabbmark rawsocket
+    Benchmark packet transmission and reception on veth interfaces using RawSocket.
+
+  snabbmark xdpsocket
+    Benchmark packet transmission and reception on veth interfaces using XDPSocket.
