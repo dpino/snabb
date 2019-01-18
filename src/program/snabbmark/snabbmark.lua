@@ -477,6 +477,36 @@ local function socket (driver, npackets, packet_size, timeout)
    -- Topology:
    -- Source -> Socket NIC#1 => Socket NIC#2 -> Sink
 
+   local pkt = packet.from_string(lib.hexundump([=[
+      3c fd fe 9e 7f 71 ec b1 d7 98 3a c0 08 00 45 00
+      00 2e 00 00 00 00 40 11 88 97 05 08 07 08 c8 14
+      1e 04 10 92 10 92 00 1a 6d a3 34 33 1f 69 40 6b
+      54 59 b6 14 2d 11 44 bf af d9 be aa
+   ]=], 60))
+
+   local c = config.new()
+   config.app(c, "source", basic_apps.Source)
+   config.app(c, "tee", basic_apps.Tee)
+   config.app(c, ifname0, driver, ifname0)
+   config.app(c, ifname1, driver, ifname1)
+   config.app(c, "sink", basic_apps.Sink)
+
+   --[[
+   config.link(c, "source.tx -> tee.rx")
+   config.link(c, "tee.tx -> "..ifname0..".rx")
+   --]]
+
+   config.link(c, "source.tx -> tee.rx")
+   config.link(c, "tee.tx -> "..ifname0..".rx")
+   config.link(c, ifname1..".tx -> sink.input")
+
+   engine.configure(c)
+   engine.app_table.source:set_packet(pkt)
+
+   print("hi")
+   engine.main({duration=0, report={showlinks=true}})
+
+   --[=[
    -- Initialize apps.
    local c = config.new()
 
@@ -522,6 +552,7 @@ local function socket (driver, npackets, packet_size, timeout)
       print(("Packets lost. Rx: %d. Lost: %d"):format(txpackets, npackets - txpackets))
       main.exit(1)
    end
+   --]=]
 end
 
 function rawsocket (npackets, packet_size, timeout)
