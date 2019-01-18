@@ -460,12 +460,10 @@ static struct xdpsock *xsk_configure(struct xdp_umem *umem, options_t opts)
 
 static int receive_aux(struct xdpsock *xsk, char* pkt)
 {
-   // TODO: batch_size will always be 1. Simplify code.
-   uint8_t batch_size = 1;
-    struct xdp_desc descs[batch_size];
+    struct xdp_desc descs[BATCH_SIZE];
     unsigned int rcvd, i;
 
-    rcvd = xq_deq(&xsk->rx, descs, batch_size);
+    rcvd = xq_deq(&xsk->rx, descs, BATCH_SIZE);
     if (!rcvd) {
       pkt = NULL;
         return 0;
@@ -588,16 +586,15 @@ static void copy_packet(char *frame, const char* data, size_t length)
 
 int transfer(xdp_context_t *ctx, const char* data, size_t length)
 {
-   const int batch_size = 1;
    unsigned int idx = 0;
    struct xdpsock *xsk = ctx->xsks[0];
 
-   if (xq_nb_free(&xsk->tx, batch_size) >= batch_size) {
+   if (xq_nb_free(&xsk->tx, BATCH_SIZE) >= BATCH_SIZE) {
       copy_packet(&xsk->umem->frames[0], data, length);
-      lassert(xq_enq_tx_only(&xsk->tx, idx, batch_size) == 0);
+      lassert(xq_enq_tx_only(&xsk->tx, idx, BATCH_SIZE) == 0);
 
-      xsk->outstanding_tx += batch_size;
-      idx += batch_size;
+      xsk->outstanding_tx += BATCH_SIZE;
+      idx += BATCH_SIZE;
       idx %= NUM_FRAMES;
    }
    return complete_tx_only(xsk);
