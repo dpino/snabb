@@ -493,7 +493,7 @@ local function socket (driver, npackets, packet_size, timeout)
 
    -- Set engine.
    engine.configure(c)
-   local from, to = ethernet:pton("0a:12:1b:ac:85:e5"), ethernet:pton("36:b5:c0:77:86:bb")
+   local from, to = ethernet:pton("02:00:00:00:00:01"), ethernet:pton("02:00:00:00:00:02")
    engine.app_table.source:set_packet_addresses(from, to)
    engine.app_table.source:set_packet_size(packet_size)
    engine.Hz = false
