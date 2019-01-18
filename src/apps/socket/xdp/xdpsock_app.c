@@ -465,9 +465,9 @@ static int receive_aux(struct xdpsock *xsk, char* pkt)
 
     rcvd = xq_deq(&xsk->rx, descs, BATCH_SIZE);
     if (!rcvd) {
-      pkt = NULL;
+        pkt = NULL;
         return 0;
-   }
+    }
 
     for (i = 0; i < rcvd; i++) {
         pkt = xq_get_data(xsk, descs[i].addr);
@@ -476,44 +476,44 @@ static int receive_aux(struct xdpsock *xsk, char* pkt)
 
     umem_fill_to_kernel_ex(&xsk->umem->fq, descs, rcvd);
 
-   return i;
+    return i;
 }
 
 int receive(xdp_context_t* ctx, char* pkt)
 {
-   return receive_aux(ctx->xsks[0], pkt);
+    return receive_aux(ctx->xsks[0], pkt);
 }
 
 bool can_receive(xdp_context_t* ctx)
 {
-   const int timeout = 1000; /* 1sn */
-   if (!ctx->fds_in) {
-      ctx->fds_in = (struct pollfd*) calloc(sizeof(struct pollfd), ctx->num_socks);
-      for (int i = 0; i < ctx->num_socks; i++) {
-         ctx->fds_in[i].fd = ctx->xsks[i]->sfd;
-         ctx->fds_in[i].events = POLLIN;
-      }
+    const int timeout = 1000; /* 1sn */
+    if (!ctx->fds_in) {
+        ctx->fds_in = (struct pollfd*) calloc(sizeof(struct pollfd), ctx->num_socks);
+        for (int i = 0; i < ctx->num_socks; i++) {
+            ctx->fds_in[i].fd = ctx->xsks[i]->sfd;
+            ctx->fds_in[i].events = POLLIN;
+        }
     }
     return poll(ctx->fds_in, ctx->num_socks, timeout) > 0;
 }
 
 bool can_transfer(xdp_context_t *ctx)
 {
-   const int timeout = 1000; /* 1sn */
+    const int timeout = 1000; /* 1sn */
     const int nfds = 1;
-   if (!ctx->fds_out) {
-      ctx->fds_out = (struct pollfd*) calloc(sizeof(struct pollfd), nfds);
-      ctx->fds_out[0].fd = ctx->xsks[0]->sfd;
-      ctx->fds_out[0].events = POLLOUT;
-   }
+    if (!ctx->fds_out) {
+        ctx->fds_out = (struct pollfd*) calloc(sizeof(struct pollfd), nfds);
+        ctx->fds_out[0].fd = ctx->xsks[0]->sfd;
+        ctx->fds_out[0].events = POLLOUT;
+    }
 
     int ret = poll(ctx->fds_out, nfds, timeout);
     if (ret <= 0) {
         return false;
-   }
+    }
 
     if (ctx->fds_out[0].fd != ctx->xsks[0]->sfd ||
-        !(ctx->fds_out[0].revents & POLLOUT))
+            !(ctx->fds_out[0].revents & POLLOUT))
         return false;
 
     return true;
