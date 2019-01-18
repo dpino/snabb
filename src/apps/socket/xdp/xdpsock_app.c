@@ -308,15 +308,6 @@ static inline int xq_deq(struct xdp_uqueue *uq,
     return entries;
 }
 
-static void hex_dump(const char *pkt, size_t length)
-{
-   for (uint16_t i = 0; i < length;) {
-      printf("%.2x", pkt[i++] & 0xff);
-      printf((i % 16 == 0) ? "\n" : " ");
-   }
-   printf("\n");
-}
-
 static struct xdp_umem *xdp_umem_configure(int sfd)
 {
     int fq_size = FQ_NUM_DESCS, cq_size = CQ_NUM_DESCS;
@@ -482,7 +473,6 @@ static int receive_aux(struct xdpsock *xsk, char* pkt)
 
     for (i = 0; i < rcvd; i++) {
         pkt = xq_get_data(xsk, descs[i].addr);
-        hex_dump(pkt, descs[i].len);
     }
     xsk->rx_npkts += rcvd;
 
