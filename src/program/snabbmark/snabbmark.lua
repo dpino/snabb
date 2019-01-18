@@ -450,8 +450,6 @@ function intel10g (npackets, packet_size, timeout)
 end
 
 local function socket (driver, npackets, packet_size, timeout)
-   print(("Packets: %d; Packet Size: %d; Timeout: %d"):format(npackets, packet_size, timeout))
-
    local ifname0 = lib.getenv("SNABB_PCI0")
    if not ifname0 then
       print("SNABB_PCI0 not set.")
@@ -463,27 +461,41 @@ local function socket (driver, npackets, packet_size, timeout)
       os.exit(engine.test_skipped_code)
    end
 
+   function stats (txpackets, rxpackets, runtime, packet_size)
+      local total = txpackets / 1e6
+      local mpps = txpackets / runtime / 1e6
+      local gbps = ((txpackets * packet_size * 8) / runtime) / (1024*1024*1024)
+      local loss = (txpackets - rxpackets) * 100 / txpackets
+      print()
+      print(("Processed %.1f million packets in %.2f seconds (rate: %.1f Mpps, %.2f Gbit/s, %.2f %% packet loss)."):format(
+              total, runtime, mpps, gbps, loss))
+   end
+
+   print(("Packets: %d; Packet Size: %d; Timeout: %d"):format(npackets, packet_size, timeout))
+   print(("Sending through %s, receiving through %s"):format(ifname0, ifname1))
+
    -- Topology:
    -- Source -> Socket NIC#1 => Socket NIC#2 -> Sink
 
+   -- Initialize apps.
    local c = config.new()
 
    config.app(c, "source", Source)
+   config.app(c, "tee", basic_apps.Tee)
    config.app(c, ifname0, driver, ifname0)
    config.app(c, ifname1, driver, ifname1)
    config.app(c, "sink", basic_apps.Sink)
 
-   config.link(c, "source.tx -> " .. ifname0 .. ".input")
-   config.link(c, ifname1 .. ".output -> sink.rx")
+   -- Set links.
+   config.link(c, "source.tx -> tee.rx")
+   config.link(c, "tee.tx -> "..ifname0..".rx")
+   config.link(c, ifname1..".tx -> sink.input")
 
+   -- Set engine.
    engine.configure(c)
-
-   print(("Sending through %s, receiving through %s"):format(ifname0, ifname1))
-
-   engine.app_table.source:set_packet_addresses(ethernet:pton("02:00:00:00:00:01"),
-   ethernet:pton("02:00:00:00:00:02"))
+   local from, to = ethernet:pton("0a:12:1b:ac:85:e5"), ethernet:pton("36:b5:c0:77:86:bb")
+   engine.app_table.source:set_packet_addresses(from, to)
    engine.app_table.source:set_packet_size(packet_size)
-
    engine.Hz = false
 
    local start = C.get_monotonic_time()
@@ -491,21 +503,21 @@ local function socket (driver, npackets, packet_size, timeout)
    local txpackets = 0
    local n, n_max = 0, timeout and timeout * 100
    while txpackets < npackets and n < n_max do
-      txpackets = txpackets + link.stats(engine.app_table.source.output.tx).txpackets
+      txpackets = link.stats(engine.app_table.source.output.tx).txpackets
       engine.main({duration = 0.01, no_report = true})
       n = n + 1
    end
+
    local finish = C.get_monotonic_time()
    local runtime = finish - start
-   local rxpackets = link.stats(engine.app_table.sink.input.rx).rxpackets
+   local rxpackets = link.stats(engine.app_table.sink.input.input).rxpackets
+   if rxpackets >= txpackets then
+      rxpackets = txpackets
+   end
    engine.report()
-   print()
-   print(("Processed %.1f million packets in %.2f seconds (rate: %.1f Mpps, %.2f Gbit/s, %.2f %% packet loss)."):format(
-      txpackets / 1e6, runtime,
-      txpackets / runtime / 1e6,
-      ((txpackets * packet_size * 8) / runtime) / (1024*1024*1024),
-      (txpackets - rxpackets) *100 / txpackets
-   ))
+
+   stats(txpackets, rxpackets, runtime, packet_size)
+
    if txpackets < npackets then
       print(("Packets lost. Rx: %d. Lost: %d"):format(txpackets, npackets - txpackets))
       main.exit(1)
