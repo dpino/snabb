@@ -57,7 +57,9 @@ function XDPSocket:pull ()
    local tx = self.output and self.output.tx
    if not tx then return end
    local limit = engine.pull_npackets
-   while limit > 0 and self:can_receive() do
+   -- while limit > 0 and self:can_receive() do
+   while limit > 0 do
+      if not self:can_receive() then break end
       limit = limit - 1
       link.transmit(tx, self:receive())
    end

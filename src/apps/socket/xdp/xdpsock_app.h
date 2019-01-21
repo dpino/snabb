@@ -64,10 +64,10 @@ struct options {
 typedef struct options options_t;
 
 typedef struct xdp_context {
-    struct xdpsock *xsks[4];
-	int num_socks;
-	struct pollfd *fds_in;
-	struct pollfd *fds_out;
+   struct xdpsock *xsks[1];
+   int num_socks;
+   struct pollfd fds_in[1];
+   struct pollfd fds_out[1];
 } xdp_context_t;
 
 bool can_receive(xdp_context_t* ctx);

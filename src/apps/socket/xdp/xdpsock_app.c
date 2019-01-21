@@ -469,20 +469,28 @@ int receive(xdp_context_t* ctx, char* pkt)
 
 bool can_receive(xdp_context_t* ctx)
 {
-    const int timeout = 1000; /* 1sn */
-    if (!ctx->fds_in) {
-        ctx->fds_in = (struct pollfd*) calloc(sizeof(struct pollfd), ctx->num_socks);
-        for (int i = 0; i < ctx->num_socks; i++) {
-            ctx->fds_in[i].fd = ctx->xsks[i]->sfd;
-            ctx->fds_in[i].events = POLLIN;
-        }
-    }
-    return poll(ctx->fds_in, ctx->num_socks, timeout) > 0;
+    return poll(ctx->fds_in, ctx->num_socks, 0) > 0;
 }
 
+bool can_transfer(xdp_context_t* ctx)
+{
+    int ret = poll(ctx->fds_out, ctx->num_socks, 0);
+    if (ret <= 0) {
+        return false;
+    }
+    if (ctx->fds_out[0].fd != ctx->xsks[0]->sfd ||
+            !(ctx->fds_out[0].revents & POLLOUT)) {
+        return false;
+    }
+    return true;
+}
+
+/*
 bool can_transfer(xdp_context_t *ctx)
 {
-    const int timeout = 1000; /* 1sn */
+    bool result = true;
+
+    const int timeout = 1000;
     const int nfds = 1;
     if (!ctx->fds_out) {
         ctx->fds_out = (struct pollfd*) calloc(sizeof(struct pollfd), nfds);
@@ -492,15 +500,19 @@ bool can_transfer(xdp_context_t *ctx)
 
     int ret = poll(ctx->fds_out, nfds, timeout);
     if (ret <= 0) {
-        return false;
+        result = false;
     }
 
     if (ctx->fds_out[0].fd != ctx->xsks[0]->sfd ||
-            !(ctx->fds_out[0].revents & POLLOUT))
-        return false;
+            !(ctx->fds_out[0].revents & POLLOUT)) {
+        result = false;
+    }
+    
+    // printf("### can_transfer: %s\n", result ? "TRUE" : "FALSE");
 
-    return true;
+    return result;
 }
+*/
 
 /*
 static void kick_tx(int fd)
@@ -679,8 +691,10 @@ static xdp_context_t* init_xsks(int xsks_map, options_t opts)
     for (int i = 0; i < num_socks; i++) {
         res->xsks[i] = xsks[i];
     }
-    res->fds_in = NULL;
-    res->fds_out = NULL;
+    res->fds_in[0].fd = xsks[0]->sfd;
+    res->fds_in[0].events = POLLOUT;
+    res->fds_out[0].fd = xsks[0]->sfd;
+    res->fds_out[0].events = POLLOUT;
 
     return res;
 }
