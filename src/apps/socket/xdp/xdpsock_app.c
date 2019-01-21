@@ -88,12 +88,6 @@
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
 
-static char opt_if[256];
-static int opt_bench;
-static int opt_poll;
-static int opt_queue;
-static int opt_xdp_flags;
-
 static struct xdpsock *xsks[MAX_SOCKS];
 static int num_socks;
 
@@ -714,12 +708,6 @@ xdp_context_t* init_xdp(const char *ifname)
     };
     strcpy(opts.opt_if, ifname);
     opts.ifindex = if_index_by_name(opts.opt_if);
-
-    opt_bench = opts.bench;
-    opt_poll = opts.poll;
-    opt_queue = opts.queue;
-    opt_xdp_flags = opts.xdp_flags;
-    strcpy(opt_if, ifname);
 
     int xsks_map = load_bpf_program("xdpsock", opts);
     if (xsks_map < 0) {
