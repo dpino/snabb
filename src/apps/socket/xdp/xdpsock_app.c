@@ -88,12 +88,6 @@
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
 
-static const char pkt_data[] =
-    "\x3c\xfd\xfe\x9e\x7f\x71\xec\xb1\xd7\x98\x3a\xc0\x08\x00\x45\x00"
-    "\x00\x2e\x00\x00\x00\x00\x40\x11\x88\x97\x05\x08\x07\x08\xc8\x14"
-    "\x1e\x04\x10\x92\x10\x92\x00\x1a\x6d\xa3\x34\x33\x1f\x69\x40\x6b"
-    "\x54\x59\xb6\x14\x2d\x11\x44\xbf\xaf\xd9\xbe\xaa";
-
 static char opt_if[256];
 static int opt_bench;
 static int opt_poll;
@@ -261,7 +255,7 @@ static inline int xq_enq(struct xdp_uqueue *uq,
 }
 
 static inline int xq_enq_tx_only(struct xdp_uqueue *uq,
-                 unsigned int id, unsigned int ndescs)
+                 unsigned int id, unsigned int ndescs, size_t length)
 {
     struct xdp_desc *r = uq->ring;
     unsigned int i;
@@ -273,7 +267,7 @@ static inline int xq_enq_tx_only(struct xdp_uqueue *uq,
         u32 idx = uq->cached_prod++ & uq->mask;
 
         r[idx].addr = (id + i) << FRAME_SHIFT;
-        r[idx].len = sizeof(pkt_data) - 1;
+        r[idx].len = length;
     }
 
     u_smp_wmb();
@@ -591,7 +585,7 @@ int transfer(xdp_context_t *ctx, const char* data, size_t length)
 
    if (xq_nb_free(&xsk->tx, BATCH_SIZE) >= BATCH_SIZE) {
       copy_packet(&xsk->umem->frames[0], data, length);
-      lassert(xq_enq_tx_only(&xsk->tx, idx, BATCH_SIZE) == 0);
+      lassert(xq_enq_tx_only(&xsk->tx, idx, BATCH_SIZE, length) == 0);
 
       xsk->outstanding_tx += BATCH_SIZE;
       idx += BATCH_SIZE;
