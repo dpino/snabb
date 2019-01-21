@@ -91,8 +91,6 @@
 static struct xdpsock *xsks[MAX_SOCKS];
 static int num_socks;
 
-static unsigned long prev_time;
-
 bool can_receive(xdp_context_t* ctx);
 bool can_transfer(xdp_context_t *ctx);
 int receive(xdp_context_t* ctx, char* pkt);
