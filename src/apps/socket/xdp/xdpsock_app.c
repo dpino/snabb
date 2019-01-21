@@ -88,9 +88,6 @@
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
 
-static struct xdpsock *xsks[MAX_SOCKS];
-static int num_socks;
-
 bool can_receive(xdp_context_t* ctx);
 bool can_transfer(xdp_context_t *ctx);
 int receive(xdp_context_t* ctx, char* pkt);
@@ -655,6 +652,9 @@ static int load_bpf_program(const char *name, options_t opts)
 
 static xdp_context_t* init_xsks(int xsks_map, options_t opts)
 {
+    struct xdpsock *xsks[MAX_SOCKS];
+    int num_socks = 0;
+
     /* Create sockets... */
     xsks[num_socks++] = xsk_configure(NULL, opts);
 
@@ -674,14 +674,15 @@ static xdp_context_t* init_xsks(int xsks_map, options_t opts)
         }
     }
 
-   xdp_context_t* res = (xdp_context_t*) malloc(sizeof(xdp_context_t));
-   res->num_socks = num_socks;
-   for (int i = 0; i < num_socks; i++) {
-      res->xsks[i] = xsks[i];
-   }
-   res->fds_in = NULL;
-   res->fds_out = NULL;
-   return res;
+    xdp_context_t* res = (xdp_context_t*) malloc(sizeof(xdp_context_t));
+    res->num_socks = num_socks;
+    for (int i = 0; i < num_socks; i++) {
+        res->xsks[i] = xsks[i];
+    }
+    res->fds_in = NULL;
+    res->fds_out = NULL;
+
+    return res;
 }
 
 static unsigned int if_index_by_name(const char *if_name)
