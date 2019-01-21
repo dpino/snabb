@@ -469,11 +469,14 @@ int receive(xdp_context_t* ctx, char* pkt)
 
 bool can_receive(xdp_context_t* ctx)
 {
-    return poll(ctx->fds_in, ctx->num_socks, 0) > 0;
+    return true;
+    // return poll(ctx->fds_in, ctx->num_socks, 0) > 0;
 }
 
 bool can_transfer(xdp_context_t* ctx)
 {
+    return true;
+    /*
     int ret = poll(ctx->fds_out, ctx->num_socks, 0);
     if (ret <= 0) {
         return false;
@@ -483,6 +486,7 @@ bool can_transfer(xdp_context_t* ctx)
         return false;
     }
     return true;
+    */
 }
 
 /*

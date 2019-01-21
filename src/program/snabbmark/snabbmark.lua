@@ -484,33 +484,10 @@ local function socket (driver, npackets, packet_size, timeout)
       54 59 b6 14 2d 11 44 bf af d9 be aa
    ]=], 60))
 
-   local c = config.new()
-   config.app(c, "source", basic_apps.Source)
-   config.app(c, "tee", basic_apps.Tee)
-   config.app(c, ifname0, driver, ifname0)
-   config.app(c, ifname1, driver, ifname1)
-   config.app(c, "sink", basic_apps.Sink)
-
-   --[[
-   config.link(c, "source.tx -> tee.rx")
-   config.link(c, "tee.tx -> "..ifname0..".rx")
-   --]]
-
-   config.link(c, "source.tx -> tee.rx")
-   config.link(c, "tee.tx -> "..ifname0..".rx")
-   config.link(c, ifname1..".tx -> sink.input")
-
-   engine.configure(c)
-   engine.app_table.source:set_packet(pkt)
-
-   print("hi")
-   engine.main({duration=0, report={showlinks=true}})
-
-   --[=[
    -- Initialize apps.
    local c = config.new()
 
-   config.app(c, "source", Source)
+   config.app(c, "source", basic_apps.Source)
    config.app(c, "tee", basic_apps.Tee)
    config.app(c, ifname0, driver, ifname0)
    config.app(c, ifname1, driver, ifname1)
@@ -523,9 +500,7 @@ local function socket (driver, npackets, packet_size, timeout)
 
    -- Set engine.
    engine.configure(c)
-   local from, to = ethernet:pton("02:00:00:00:00:01"), ethernet:pton("02:00:00:00:00:02")
-   engine.app_table.source:set_packet_addresses(from, to)
-   engine.app_table.source:set_packet_size(packet_size)
+   engine.app_table.source:set_packet(pkt)
    engine.Hz = false
 
    local start = C.get_monotonic_time()
@@ -546,13 +521,13 @@ local function socket (driver, npackets, packet_size, timeout)
    end
    engine.report()
 
+   print(txpackets, rxpackets)
    stats(txpackets, rxpackets, runtime, packet_size)
 
    if txpackets < npackets then
       print(("Packets lost. Rx: %d. Lost: %d"):format(txpackets, npackets - txpackets))
       main.exit(1)
    end
-   --]=]
 end
 
 function rawsocket (npackets, packet_size, timeout)
