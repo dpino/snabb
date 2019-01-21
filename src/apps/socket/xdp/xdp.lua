@@ -63,7 +63,7 @@ function XDPSocket:pull ()
    end
 end
 
-function XDPSocket:can_transfer()
+function XDPSocket:can_transmit()
    return self.dev.can_transfer(self.dev.context)
 end
 
@@ -74,7 +74,7 @@ end
 function XDPSocket:push ()
    local rx = self.input and self.input.rx
    if not rx then return end
-   while not link.empty(rx) and self:can_transfer() do
+   while not link.empty(rx) and self:can_transmit() do
       local p = link.receive(rx)
       self:transfer(p)
       packet.free(p)
