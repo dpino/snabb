@@ -172,6 +172,7 @@ end
 
 -- Cleanup after Snabb process.
 function shutdown (pid)
+   io.stderr:write("shutting down (pid: "..pid..")\n")
    -- simple pcall helper to print error and continue
    local function safely (f)
       local ok, err = pcall(f)
@@ -194,6 +195,7 @@ function shutdown (pid)
    end
    -- Free shared memory objects
    if not _G.developer_debug and not lib.getenv("SNABB_SHM_KEEP") then
+      io.stderr:write("remove dir: "..shm.root.."/"..pid.."\n")
       -- Try cleaning up symlinks for named apps, if none exist, fail silently.
       local backlink = shm.root.."/"..pid.."/name"
       local name_link = S.readlink(backlink)
